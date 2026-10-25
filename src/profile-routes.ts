@@ -13,27 +13,14 @@ import {
   detectAvatarMime,
   editAddress,
   maxAvatarBytes,
-  normalizeAddressDefaults,
   profileUpdateSchema,
   removeAddress,
   setDefaultAddress,
+  formatProfile,
   type SavedAddress,
 } from './profile-rules.js';
 
 type Identity = { sub: string; email: string; name: string; role: 'admin' | 'customer' };
-type ProfileData = {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'customer';
-  phone: string;
-  about: string;
-  preferredLanguage: string;
-  marketingOptIn: boolean;
-  memberSince: string | null;
-  avatarUpdatedAt: string | null;
-  addresses: SavedAddress[];
-};
 type Avatar = { bytes: Buffer; mime: string; updatedAt: Date };
 type DemoProfile = {
   phone: string;
@@ -79,39 +66,6 @@ export function registerProfileRoutes(
     if (!validId(id)) return null;
     return UserModel.findById(id);
   }
-  // Typing u exposes stored profiles with missing fields that pass through as-is; fixing that
-  // changes API output, so it is left loose for now.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const format = (u: any, id?: string): ProfileData => ({
-    id: id || String(u._id),
-    name: u.name,
-    email: u.email,
-    role: u.role,
-    phone: u.phone || '',
-    about: u.about || '',
-    preferredLanguage: u.preferredLanguage || 'English',
-    marketingOptIn: Boolean(u.marketingOptIn),
-    memberSince: u.memberSince || (u.createdAt ? new Date(u.createdAt).toISOString() : null),
-    avatarUpdatedAt: u.avatarUpdatedAt ? new Date(u.avatarUpdatedAt).toISOString() : null,
-    addresses: normalizeAddressDefaults(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (u.addresses || []).map((a: any) => ({
-        id: a.id,
-        label: a.label,
-        nickname: a.nickname || '',
-        recipientName: a.recipientName,
-        phone: a.phone,
-        street: a.street,
-        unit: a.unit || '',
-        suburb: a.suburb || '',
-        city: a.city,
-        province: a.province,
-        postalCode: a.postalCode,
-        deliveryNotes: a.deliveryNotes || '',
-        isDefault: Boolean(a.isDefault),
-      })),
-    ),
-  });
 
   app.get(
     '/api/profile',
@@ -125,7 +79,7 @@ export function registerProfileRoutes(
           return;
         }
         res.json({
-          profile: format(
+          profile: formatProfile(
             { ...found.user, ...found.profile, avatarUpdatedAt: found.profile.avatar?.updatedAt },
             uid,
           ),
@@ -138,7 +92,7 @@ export function registerProfileRoutes(
         return;
       }
       res.setHeader('Cache-Control', 'private, no-store');
-      res.json({ profile: format(user) });
+      res.json({ profile: formatProfile(user) });
     }),
   );
 
@@ -160,7 +114,7 @@ export function registerProfileRoutes(
           Object.fromEntries(Object.entries(changes).filter(([k]) => k !== 'name')),
         );
         res.json({
-          profile: format(
+          profile: formatProfile(
             { ...found.user, ...found.profile, avatarUpdatedAt: found.profile.avatar?.updatedAt },
             uid,
           ),
@@ -180,7 +134,7 @@ export function registerProfileRoutes(
         res.sendStatus(404);
         return;
       }
-      res.json({ profile: format(user) });
+      res.json({ profile: formatProfile(user) });
     }),
   );
 
@@ -189,7 +143,7 @@ export function registerProfileRoutes(
       return lookupDemo(uid)?.profile.addresses ?? null;
     }
     const user = await findUser(uid);
-    return user ? format(user).addresses : null;
+    return user ? formatProfile(user).addresses : null;
   }
   async function saveAddresses(uid: string, addresses: SavedAddress[]) {
     if (demo) {
