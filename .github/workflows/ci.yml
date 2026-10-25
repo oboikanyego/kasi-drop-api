@@ -13,5 +13,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
+      - name: Dependency vulnerability diagnostic
+        run: npm audit --json || true
       - run: npm run build
       - run: npm test
