@@ -1,4 +1,5 @@
 import {inCents} from './order-rules.js';
+import {HttpError} from './http-error.js';
 export type Product = { id:string; name:string; description:string; category:string; price:number; stock:number; image:string; tags:string[]; featured:boolean; active:boolean };
 export const categories = ['All','Food & Drink','Fashion','Home & Living','Crafts'];
 const img = (id:string) => 'https://images.unsplash.com/'+id+'?auto=format&fit=crop&w=800&q=85';
@@ -23,15 +24,15 @@ export function searchCatalogue(products:Product[], query='', category='All', ma
  return products.filter(p=>p.active && (category==='All'||!category||p.category===category) && (!maxPrice||p.price<=maxPrice) && (!terms.length||terms.some(t=>([p.name,p.description,p.category,...p.tags].join(' ').toLowerCase()).includes(t))));
 }
 export function quote(products:Product[], items:{productId:string;quantity:number}[]){
- if(!Array.isArray(items)||!items.length||items.length>30) throw Error('Cart must have 1–30 products');
+ if(!Array.isArray(items)||!items.length||items.length>30) throw new HttpError(400,'Cart must have 1–30 products');
  const seen=new Set<string>(); let subtotalCents=0;const lines=[];
  for(const item of items){
-  if(seen.has(item.productId))throw Error('Duplicate product in cart');
+  if(seen.has(item.productId))throw new HttpError(400,'Duplicate product in cart');
   seen.add(item.productId);
   const p=products.find(p=>p.id===item.productId && p.active);
-  if(!p)throw Error('Product not found: '+item.productId);
-  if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>20)throw Error('Invalid quantity');
-  if(p.stock<item.quantity)throw Error('Insufficient stock for '+p.name);
+  if(!p)throw new HttpError(400,'Product not found: '+item.productId);
+  if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>20)throw new HttpError(400,'Invalid quantity');
+  if(p.stock<item.quantity)throw new HttpError(409,'Insufficient stock for '+p.name);
   subtotalCents+=inCents(p.price)*item.quantity;
   lines.push({productId:p.id,name:p.name,price:p.price,quantity:item.quantity,image:p.image});
  }
