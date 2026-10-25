@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-const server = readFileSync('src/server.ts', 'utf8');
-const models = readFileSync('src/models.ts', 'utf8');
+import { readSource } from './source.js';
+const server = readSource('src/server.ts');
+const models = readSource('src/models.ts');
 test('favourites API requires authenticated identity for every operation', () => {
   for (const route of [
     "get('/api/favorites'",
