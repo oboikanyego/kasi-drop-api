@@ -66,3 +66,37 @@ test('empty or untrusted result is safe',async()=>{
  assert.deepEqual(result.products,[]);
  assert.deepEqual(result.cartActions,[]);
 });
+
+test('Gemini retries one 503 and succeeds',async()=>{
+ const old=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY='test-secret';
+ let attempts=0;
+ try{
+  const result=await generateGemini({contents:[]},async()=>{
+   attempts++;
+   return attempts===1?new Response('{}',{status:503}):new Response(JSON.stringify({candidates:[{content:{parts:[{text:'OK'}]}}]}),{status:200});
+  });
+  assert.equal(attempts,2);
+  assert.equal(result.candidates?.[0]?.content?.parts?.[0]?.text,'OK');
+ }finally{if(old===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=old;}
+});
+test('two provider 503 responses degrade shopping chat to safe catalogue search',async()=>{
+ const old=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY='test-secret';
+ let attempts=0;
+ try{
+  const result=await shoppingAssistant('tea',seedProducts,async()=>{attempts++;return new Response('{}',{status:503});});
+  assert.equal(attempts,2);
+  assert.equal(result.mode,'catalogue-fallback');
+  assert.match(result.reply,/AI is temporarily unavailable/);
+  assert.deepEqual(result.cartActions,[]);
+ }finally{if(old===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=old;}
+});
+test('nonretryable 403 uses immediate catalogue fallback without repeated requests',async()=>{
+ const old=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY='test-secret';
+ let attempts=0;
+ try{
+  const result=await shoppingAssistant('tea',seedProducts,async()=>{attempts++;return new Response('{}',{status:403});});
+  assert.equal(attempts,1);
+  assert.equal(result.mode,'catalogue-fallback');
+  assert.deepEqual(result.cartActions,[]);
+ }finally{if(old===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=old;}
+});
