@@ -29,7 +29,7 @@ Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
 - \`POST /api/auth/register\`, \`POST /api/auth/login\`, \`GET /api/auth/me\`
 - \`POST /api/auth/logout\`, \`POST /api/auth/session\` (exchange a Bearer token for the session cookie)
 
-**Sessions:** login and register set an httpOnly \`kasi_session\` cookie (\`SameSite=Lax\`, \`Path=/api\`, \`Secure\` when \`NODE_ENV=production\`, 7 days), so browser scripts never see the token. Cookie-authenticated \`POST\`/\`PUT\`/\`PATCH\`/\`DELETE\` requests must send an \`X-KasiDrop-CSRF\` header. A \`Authorization: Bearer\` token (returned in the login body) is still accepted for API clients and needs no CSRF header.
+**Sessions:** login and register set an httpOnly \`kasi_session\` cookie (\`SameSite=Lax\`, \`Path=/api\`, \`Secure\` when \`NODE_ENV=production\`, 7 days), so browser scripts never see the token. Cookie-authenticated \`POST\`/\`PUT\`/\`PATCH\`/\`DELETE\` requests must send an \`X-KasiDrop-CSRF\` header. Login and register return only the user, never the token. An \`Authorization: Bearer\` header is still accepted, so tokens stored by UIs released before the cookie keep working until \`POST /api/auth/session\` swaps them for it; Bearer requests need no CSRF header.
 
 - \`POST /api/orders/checkout\`, \`GET /api/orders\`, \`GET /api/orders/:id\`
 - \`GET /api/admin/summary\`, \`GET /api/admin/orders\`, \`PATCH /api/admin/orders/:id\`

@@ -9,17 +9,12 @@ import { safe } from '../http.js';
 import { demo, memUsers, secureCookies, type User } from '../state.js';
 import { sessionCookieName, sessionCookieOptions, sessionMaxAgeMs } from '../session-cookie.js';
 
-/**
- * Sign the browser in with an httpOnly session cookie. The token is still returned in the body
- * for API clients and for UIs released before the cookie, which send it as a Bearer header.
- */
+/** Sign the browser in with an httpOnly session cookie; the token never appears in a response body. */
 function startSession(res: Response, u: Pick<User, 'id' | 'email' | 'name' | 'role'>) {
-  const signed = token(u);
-  res.cookie(sessionCookieName, signed, {
+  res.cookie(sessionCookieName, token(u), {
     ...sessionCookieOptions(secureCookies),
     maxAge: sessionMaxAgeMs,
   });
-  return signed;
 }
 
 const registration = z.object({
@@ -63,7 +58,8 @@ export function registerAuthRoutes(app: Express) {
         });
         u.id = String(saved._id);
       }
-      res.status(201).json({ user: publicUser(u), token: startSession(res, u) });
+      startSession(res, u);
+      res.status(201).json({ user: publicUser(u) });
     }),
   );
   app.post(
@@ -74,7 +70,8 @@ export function registerAuthRoutes(app: Express) {
       const u = await users(email);
       if (!u || !(await bcrypt.compare(password, u.passwordHash)))
         return res.status(401).json({ error: 'Invalid email or password' });
-      res.json({ user: publicUser(u), token: startSession(res, u) });
+      startSession(res, u);
+      res.json({ user: publicUser(u) });
     }),
   );
   // Moves a session from a Bearer token (kept in browser storage by older UIs) into the cookie.
