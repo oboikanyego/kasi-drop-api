@@ -18,5 +18,7 @@ services:
         sync: false # Required only when DEMO_MODE=false
       - key: MONGODB_DB_NAME
         value: kasidrop
+      - key: JWT_SECRET
+        sync: false # Mandatory when DEMO_MODE=false
       - key: PUBLIC_API_URL
         value: https://kasi-drop-api.onrender.com

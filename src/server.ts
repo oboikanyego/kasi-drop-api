@@ -10,11 +10,15 @@ import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import {categories,seedProducts,searchCatalogue,quote,type Product} from './catalogue.js';
 import {ProductModel,UserModel,OrderModel} from './models.js';
+import {connectMongo} from './db.js';
+import {seedCatalogue,type CatalogueSeedSummary} from './seeding.js';
 import {shoppingAssistant,draftListing} from './ai.js';
 
 const app=express();app.disable('x-powered-by');
+// Render terminates TLS at its trusted reverse proxy.
+app.set('trust proxy',process.env.NODE_ENV==='production'?1:false);
 const demo=process.env.DEMO_MODE==='true';
-const secret=process.env.JWT_SECRET||(demo?'kasi-demo-secret-not-for-production':'');
+const secret=process.env.JWT_SECRET||(demo?randomUUID()+randomUUID():'');
 if(!secret)throw Error('JWT_SECRET must be set in persistent mode');
 const clientUrl=process.env.CLIENT_URL||'http://localhost:4200';
 const allowed=clientUrl.split(',').map(s=>s.trim());
@@ -25,16 +29,17 @@ const aiLimiter=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7
 type Role='admin'|'customer';type User={id:string;name:string;email:string;passwordHash:string;role:Role};
 type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;delivery:any;createdAt:Date;paidAt?:Date};
 const memProducts=seedProducts.map(p=>({...p,tags:[...p.tags]}));
+let seedStatus:CatalogueSeedSummary|undefined;
 const memUsers:User[]=[];const memOrders:Order[]=[];
 async function initialize(){
  if(demo){
   memUsers.push({id:'admin-demo',name:'Demo Admin',email:'admin@kasidrop.test',passwordHash:await bcrypt.hash('Demo@12345',10),role:'admin'});
   memUsers.push({id:'customer-demo',name:'Demo Shopper',email:'shopper@kasidrop.test',passwordHash:await bcrypt.hash('Demo@12345',10),role:'customer'});
-  console.log('DEMO MODE: ephemeral data, sandbox-only mock checkout; never use for real payments.');
+  console.log('DEMO MODE: '+seedProducts.length+' temporary catalogue products, simulated checkout; no MongoDB writes.');
  }else{
-  if(!process.env.MONGODB_URI)throw Error('MONGODB_URI must be configured when DEMO_MODE is false');
-  await mongoose.connect(process.env.MONGODB_URI, {dbName: process.env.MONGODB_DB_NAME || 'kasidrop'});
-  if(await ProductModel.countDocuments()===0)await ProductModel.insertMany(seedProducts);
+  await connectMongo();
+  // Idempotent: inserts missing catalogue products and preserves all existing edits.
+  seedStatus=await seedCatalogue();
  }
 }
 async function products():Promise<Product[]>{
@@ -63,7 +68,12 @@ const checkoutSchema=z.object({
  delivery:z.object({name:z.string().min(2),phone:z.string().min(8),address:z.string().min(5),city:z.string().min(2),province:z.string().min(2),postalCode:z.string().min(3)})
 });
 const productSchema=z.object({name:z.string().min(3).max(100),description:z.string().min(10).max(1500),category:z.string().min(2),price:z.number().positive().max(100000),stock:z.number().int().min(0),image:z.string().url().max(500),tags:z.array(z.string().max(30)).max(10).default([]),featured:z.boolean().default(false),active:z.boolean().default(true)});
-app.get('/health',(req,res)=>res.json({ok:true,app:'KasiDrop API',mode:demo?'demo':'database',timestamp:new Date().toISOString()}));
+app.get('/health',(req,res)=>res.json({
+ ok:true,app:'KasiDrop API',mode:demo?'demo':'database',
+ catalogue:demo?{source:'memory',templateProducts:seedProducts.length,notPersisted:true}:
+ {source:'mongodb',...seedStatus},
+ timestamp:new Date().toISOString()
+}));
 app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID&&process.env.PAYFAST_MERCHANT_KEY&&process.env.PAYFAST_PASSPHRASE&&process.env.PAYFAST_MODE==='sandbox'),aiEnabled:Boolean(process.env.ANTHROPIC_API_KEY)}));
 app.get('/api/products',safe(async(req,res)=>{
  const all=await products(),category=String(req.query.category||'All'),search=String(req.query.q||''),maxPrice=Number(req.query.maxPrice)||undefined;
