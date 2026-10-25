@@ -3,6 +3,7 @@
 Node.js + Express + TypeScript backend for the **KasiDrop** South African-made goods store.
 
 ## Start locally
+
 1. Install Node.js 22+, run \`npm install\`.
 2. Copy \`.env.example\` to \`.env\`.
 3. Run \`npm run dev\`. In \`DEMO_MODE=true\`, no MongoDB is necessary.
@@ -18,10 +19,12 @@ npm test
 Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
 
 **Demo accounts** (ephemeral demo mode ONLY, do not use with real customers):
+
 - \`shopper@kasidrop.test\` / \`Demo@12345\`
 - \`admin@kasidrop.test\` / \`Demo@12345\`
 
 ## Core routes
+
 - \`GET /api/meta\`, \`GET /api/products\`, \`GET /api/products/:id\`
 - \`POST /api/auth/register\`, \`POST /api/auth/login\`, \`GET /api/auth/me\`
 - \`POST /api/orders/checkout\`, \`GET /api/orders\`, \`GET /api/orders/:id\`
@@ -31,6 +34,7 @@ Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
 - \`POST /api/payfast/notify\`
 
 ## Mode and payment boundaries
+
 The starter Render blueprint enables **DEMO_MODE=true**. Data is ephemeral and payments are simulated when checkout uses \`paymentMethod=demo\`. **No real payment happens, and no actual order fulfilment should occur in demo mode.** Never store real customer details in public demo mode.
 
 For persistent deployment set \`DEMO_MODE=false\`, \`MONGODB_URI\`, a strong \`JWT_SECRET\`, and provision a trusted admin via \`SEED_ADMIN_EMAIL\` / \`SEED_ADMIN_PASSWORD\` with \`npm run seed\` (do not commit secrets). Then configure PayFast sandbox keys and \`PUBLIC_API_URL\`. Only sandbox PayFast is enabled. Actual payments, refunds, ITN failure recovery, security review and live-mode gateway verification need further hardening **before production commerce**.
@@ -40,6 +44,7 @@ PayFast checkout **reserves stock** when the order is created. A `FAILED`/`CANCE
 Chat uses Google Gemini (`GEMINI_API_KEY`, default `gemini-3.1-flash-lite`) when configured; otherwise uses a grounded catalogue fallback. Product search is lexical with South African contextual synonyms; vector embeddings are a later enhancement and **not yet implemented**.
 
 ## Deployment
+
 Render Node Web Service: \`npm ci && npm run build\`, start \`npm start\`, health path \`/health\`. Region Frankfurt is preferred for SA audiences if available. Set \`CLIENT_URL\` to the actual Netlify site. Never expose keys in the UI.
 
 See [UI repository](https://github.com/oboikanyego/kasi-drop-ui).
@@ -56,7 +61,7 @@ With `DEMO_MODE=true` the same products exist **in memory only**. Every Render r
 
 To persist sample products to MongoDB Atlas, configure the real `MONGODB_URI` and `MONGODB_DB_NAME=kasidrop` plus a strong `JWT_SECRET` in Render; set `DEMO_MODE=false`. On successful MongoDB connection, the API **automatically upserts only missing products**, then starts serving them. Each product uses a stable `id` and a unique index. Subsequent startups **preserve edited names, prices, images, inventory and availability**. Partial seeds are repaired without deleting any records. The startup log and `GET /health` report the seed totals.
 
-A manual alternative (after configuring MongoDB env vars): `npm run seed`. This CLI always connects to MongoDB, even if `DEMO_MODE=true`, and uses the same insert-only behaviour. An admin is optionally created *once* when `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` are both configured for the CLI. Do not expose these values in Git, enable shared demo admin credentials, or seed actual customer information.
+A manual alternative (after configuring MongoDB env vars): `npm run seed`. This CLI always connects to MongoDB, even if `DEMO_MODE=true`, and uses the same insert-only behaviour. An admin is optionally created _once_ when `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` are both configured for the CLI. Do not expose these values in Git, enable shared demo admin credentials, or seed actual customer information.
 
 **Important:** The public demo payment option only works while `DEMO_MODE=true`. In MongoDB-backed mode, the existing checkout requires correctly configured PayFast sandbox credentials. Do not enable real payments or fulfilment before payment reconciliation, image rights and inventory validation are production-ready.
 
@@ -64,20 +69,20 @@ A manual alternative (after configuring MongoDB env vars): `npm run seed`. This 
 
 Once configured, check `/health` for `mode:"database"` and non-zero `catalogue.activeProducts`. The collections are `kasiproducts`, `kasiusers`, `kasiorders` in the selected `kasidrop` database. You can verify `kasiproducts` counts directly in Atlas Data Explorer. Avoid treating public demo records as real customer data.
 
-
 ## Optional database-backed demo accounts and orders
 
 Set `SEED_DEMO_USERS=true` **only in a controlled testing environment**. Supply two different strong secrets in the server's environment:
+
 - `SEED_DEMO_ADMIN_PASSWORD` (minimum 16 characters, demo admin)
 - `SEED_DEMO_CUSTOMER_PASSWORD` (minimum 16 characters, shared by the three demo customers)
 
 The following fictional accounts are created if missing:
 
-| Role | Email |
-| --- | --- |
-| Demo admin | `demo.admin@kasidrop.test` |
+| Role          | Email                       |
+| ------------- | --------------------------- |
+| Demo admin    | `demo.admin@kasidrop.test`  |
 | Demo customer | `thandi.demo@kasidrop.test` |
-| Demo customer | `sipho.demo@kasidrop.test` |
+| Demo customer | `sipho.demo@kasidrop.test`  |
 | Demo customer | `naledi.demo@kasidrop.test` |
 
 The five illustrative orders use fixed IDs `KDTEST01-ORDER` through `KDTEST05-ORDER`, with statuses pending_payment, paid, processing, shipped and delivered. All have `demoSeed:true`, payment method `demo_seed`, clearly synthetic delivery addresses, and products drawn from the sample catalogue. **These orders have never been paid, shipped or fulfilled**.
@@ -100,6 +105,7 @@ The deployment can be built and run **without** the key; AI features only become
 **Model access:** Older Gemini 2.5 models can return 404 to new Google AI projects even with a valid key. Use `gemini-3.1-flash-lite` as the default free-tier model. Check `GEMINI_MODEL` in Render if Google's API reports 404. Never log API keys or complete customer prompts.
 
 ## Groq fallback for Gemini
+
 Configure `GROQ_API_KEY` and `GROQ_MODEL` on the Render API service (not in Angular). The default model is `llama-3.3-70b-versatile`. Gemini remains primary. If Gemini fails, Groq answers shopping chat and admin listing requests. If both providers fail, shopping chat falls back to catalogue search without any cart actions. Usage is subject to Groq account limits. Never commit API keys.
 
 ### Retail-style mock products and images (October 2026)
