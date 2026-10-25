@@ -16,14 +16,31 @@ export class GeminiError extends Error {
 export async function generateGemini(body:Record<string,unknown>,fetcher:typeof fetch=fetch):Promise<GeminiResponse>{
  const key=process.env.GEMINI_API_KEY?.trim();
  if(!key)throw new GeminiError(503);
- const response=await fetcher('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model())+':generateContent',{
-  method:'POST',
-  headers:{'content-type':'application/json','x-goog-api-key':key},
-  body:JSON.stringify({...body,generationConfig:{maxOutputTokens:800,...(body.generationConfig as Record<string,unknown>||{})}}),
-  signal:AbortSignal.timeout(15000)
- });
- if(!response.ok)throw new GeminiError(response.status);
- return await response.json() as GeminiResponse;
+ const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model())+':generateContent';
+ const payload=JSON.stringify({...body,generationConfig:{maxOutputTokens:800,...(body.generationConfig as Record<string,unknown>||{})}});
+ // Retry only one transient provider failure; avoid amplifying Gemini overload.
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   const response=await fetcher(url,{
+    method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},
+    body:payload,signal:AbortSignal.timeout(7000)
+   });
+   if(response.ok)return await response.json() as GeminiResponse;
+   if(attempt===0&&[502,503,504].includes(response.status)){
+    await new Promise(resolve=>setTimeout(resolve,350));
+    continue;
+   }
+   throw new GeminiError(response.status);
+  }catch(error){
+   if(error instanceof GeminiError)throw error;
+   if(attempt===0){
+    await new Promise(resolve=>setTimeout(resolve,350));
+    continue;
+   }
+   throw error;
+  }
+ }
+ throw new GeminiError(503);
 }
 function fallback(message:string,products:Product[]){
  const found=searchCatalogue(products,message).slice(0,4);
@@ -52,7 +69,7 @@ export function validatedShoppingResult(data:unknown,products:Product[]){
   matches.length?'Here are some local options to consider.':'Tell me what type of product you would like to find.';
  return {reply,products:matches,cartActions,mode:'gemini'};
 }
-export async function shoppingAssistant(message:string,products:Product[]){
+export async function shoppingAssistant(message:string,products:Product[],fetcher:typeof fetch=fetch){
  if(!geminiConfigured())return fallback(message,products);
  const active=products.filter(p=>p.active);
  const snapshot=active.slice(0,150).map(p=>({
@@ -62,13 +79,22 @@ export async function shoppingAssistant(message:string,products:Product[]){
  const started=Date.now();
  // Single request instead of 2-4 sequential tool-use turns. The model receives
  // accurate stock/prices in its prompt; its suggestions are validated server-side.
- const resp=await generateGemini({
+ let resp:GeminiResponse;
+ try{resp=await generateGemini({
   systemInstruction:{parts:[{text:
    'You are the KasiDrop South African shopping assistant. Answer briefly in friendly English, using only the supplied catalogue. Never invent items, stock or pricing. Recommend available products and match budget/category filters. Return a JSON object: reply (string, max 500 characters), productIds (array of actual catalogue IDs, max 4), cartActions (array of {productId,quantity}). Only propose cartActions when the shopper explicitly asks to add or buy an item. Product IDs and stock must match supplied catalogue. No customer personal data. No markdown.'}]},
   contents:[{role:'user',parts:[{text:'CATALOGUE: '+JSON.stringify(snapshot)+'\nSHOPPER REQUEST: '+message}]}],
   generationConfig:{responseMimeType:'application/json',maxOutputTokens:650,
    ...(model().startsWith('gemini-3')?{thinkingConfig:{thinkingLevel:'minimal'}}:{})}
- });
+ },fetcher);
+ }catch(err){
+  if(err instanceof GeminiError||err instanceof Error&&['TimeoutError','AbortError','TypeError'].includes(err.name)){
+   console.warn('[gemini] provider fallback',{status:err instanceof GeminiError?err.status:'network',durationMs:Date.now()-started});
+   const result=fallback(message,active);
+   return {...result,reply:'AI is temporarily unavailable. '+result.reply};
+  }
+  throw err;
+ }
  const text=resp.candidates?.[0]?.content?.parts?.filter(part=>typeof part.text==='string').map(part=>part.text).join('')||'';
  if(!text.trim())throw Error('Gemini returned an empty shopping response');
  const result=validatedShoppingResult(JSON.parse(text),active);
