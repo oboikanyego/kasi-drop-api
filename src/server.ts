@@ -901,7 +901,8 @@ app.post(
 registerProfileRoutes(app, guard(), identity, demo, (id) =>
   memUsers.find((user) => user.id === id),
 );
-app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+// Express recognises error handlers by their four parameters, so _next must stay.
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError)
     return res.status(400).json({ error: 'Validation failed', details: err.flatten() });
   const { status, body } = errorResponse(err);

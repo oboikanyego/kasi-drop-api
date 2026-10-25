@@ -10,7 +10,6 @@ type Part = {
   functionCall?: { name: string; args?: Record<string, unknown>; id?: string };
   functionResponse?: { name: string; response: unknown; id?: string };
 };
-type Content = { role: 'user' | 'model'; parts: Part[] };
 type GeminiResponse = { candidates?: Array<{ content?: { parts?: Part[] } }> };
 const model = () => process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 export const geminiConfigured = () => Boolean(process.env.GEMINI_API_KEY?.trim());
