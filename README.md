@@ -101,3 +101,11 @@ The deployment can be built and run **without** the key; AI features only become
 
 ## Groq fallback for Gemini
 Configure `GROQ_API_KEY` and `GROQ_MODEL` on the Render API service (not in Angular). The default model is `llama-3.3-70b-versatile`. Gemini remains primary. If Gemini fails, Groq answers shopping chat and admin listing requests. If both providers fail, shopping chat falls back to catalogue search without any cart actions. Usage is subject to Groq account limits. Never commit API keys.
+
+### Retail-style mock products and images (October 2026)
+
+The seed also includes **12 additional retailer-style SKUs** (`mock-*`) for common products such as rooibos tea packs, 100 g biltong, household ceramics, everyday apparel, accessories and hand-crafted homewares. These are representative **product categories and formats commonly stocked by retailers**, not offers by any named store. All names, prices, availability and sellers are illustrative; photography is representative and might not show exact packaging. Do not imply endorsement or authentic stock.
+
+Existing seeded product IDs remain unchanged because orders and demo fixtures use them. MongoDB upsert-on-insert **adds only missing new IDs**, leaving previous and manually edited items untouched. After merging/deploying in persistent mode, the automatic seed inserts the 12 `mock-*` products; it does not replace the pre-existing 12 product records.
+
+Photos use direct images.unsplash.com CDN URLs, with size/quality parameters. Unsplash licensing generally permits free commercial use, but respect applicable brand/likeness restrictions. The API's CI includes a **live image URL audit** (`npx tsx scripts/audit-catalogue-images.ts`), validating HTTP success and image content type for every unique seeded image. A passing CI checks availability at that moment, not a permanent guarantee against future CDN changes. Store copies in controlled asset hosting if long-term availability is essential.
