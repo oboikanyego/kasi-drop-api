@@ -14,7 +14,7 @@ async function main(){
  await connectMongo();
  const ids=legacySeedProducts.map(p=>p.id);
  const existing=await ProductModel.find({id:{$in:ids}}).lean() as unknown as Product[];
- const unsettled=await OrderModel.find({status:{$in:['pending_payment','requires_review','processing']}},
+ const unsettled=await OrderModel.find({status:{$in:['pending_payment','requires_review','processing']},
   'items.productId':{$in:ids}},{'items.productId':1}).lean() as Array<{items:{productId:string}[]}>;
  const blocked=new Set(unsettled.flatMap(o=>o.items.map(l=>l.productId)));
  const actions=planDemoCatalogueRefresh(existing,blocked);
