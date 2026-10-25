@@ -9,7 +9,9 @@
     "start": "node dist/server.js",
     "test": "tsx --test tests/*.test.ts",
     "seed": "tsx src/seed.ts",
-    "refresh:catalogue": "tsx src/refresh-demo-catalogue.ts"
+    "refresh:catalogue": "tsx src/refresh-demo-catalogue.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "engines": {
     "node": ">=20"
@@ -32,6 +34,7 @@
     "@types/jsonwebtoken": "^9.0.8",
     "@types/node": "^22.10.7",
     "tsx": "^4.19.2",
-    "typescript": "~5.7.3"
+    "typescript": "~5.7.3",
+    "prettier": "3.6.2"
   }
 }
