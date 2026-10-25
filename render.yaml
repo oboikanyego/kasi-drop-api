@@ -32,3 +32,7 @@ services:
         sync: false # Set manually in Render; never commit the secret
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite
+      - key: GROQ_API_KEY
+        sync: false # Backend-only Groq fallback secret
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

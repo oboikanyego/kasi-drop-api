@@ -1,3 +1,4 @@
+import {groqConfigured,groqJson} from './groq.js';
 import type {Product} from './catalogue.js';
 import {searchCatalogue} from './catalogue.js';
 
@@ -70,7 +71,7 @@ export function validatedShoppingResult(data:unknown,products:Product[]){
  return {reply,products:matches,cartActions,mode:'gemini'};
 }
 export async function shoppingAssistant(message:string,products:Product[],fetcher:typeof fetch=fetch){
- if(!geminiConfigured())return fallback(message,products);
+ if(!geminiConfigured()&&!groqConfigured())return fallback(message,products);
  const active=products.filter(p=>p.active);
  const snapshot=active.slice(0,150).map(p=>({
   id:p.id,name:p.name,category:p.category,price:p.price,stock:p.stock,
@@ -79,41 +80,56 @@ export async function shoppingAssistant(message:string,products:Product[],fetche
  const started=Date.now();
  // Single request instead of 2-4 sequential tool-use turns. The model receives
  // accurate stock/prices in its prompt; its suggestions are validated server-side.
- let resp:GeminiResponse;
- try{resp=await generateGemini({
-  systemInstruction:{parts:[{text:
-   'You are the KasiDrop South African shopping assistant. Answer briefly in friendly English, using only the supplied catalogue. Never invent items, stock or pricing. Recommend available products and match budget/category filters. Return a JSON object: reply (string, max 500 characters), productIds (array of actual catalogue IDs, max 4), cartActions (array of {productId,quantity}). Only propose cartActions when the shopper explicitly asks to add or buy an item. Product IDs and stock must match supplied catalogue. No customer personal data. No markdown.'}]},
-  contents:[{role:'user',parts:[{text:'CATALOGUE: '+JSON.stringify(snapshot)+'\nSHOPPER REQUEST: '+message}]}],
-  generationConfig:{responseMimeType:'application/json',maxOutputTokens:650,
-   ...(model().startsWith('gemini-3')?{thinkingConfig:{thinkingLevel:'minimal'}}:{})}
- },fetcher);
- }catch(err){
-  if(err instanceof GeminiError||err instanceof Error&&['TimeoutError','AbortError','TypeError'].includes(err.name)){
-   console.warn('[gemini] provider fallback',{status:err instanceof GeminiError?err.status:'network',durationMs:Date.now()-started});
-   const result=fallback(message,active);
-   return {...result,reply:'AI is temporarily unavailable. '+result.reply};
-  }
-  throw err;
+ const instruction='You are KasiDrop shopping assistant. Use only these South African products, actual prices and stock. Reply JSON with reply (brief text), productIds (array of real product IDs), cartActions (array of {productId,quantity}). Only add cartActions when the shopper explicitly asks. Never invent products, prices or stock.';
+ const prompt='CATALOGUE: '+JSON.stringify(snapshot)+'\\nSHOPPER REQUEST: '+message;
+ let parsed:unknown;
+ let provider='gemini';
+ if(geminiConfigured()){
+  try{
+   const response=await generateGemini({
+    systemInstruction:{parts:[{text:instruction}]},
+    contents:[{role:'user',parts:[{text:prompt}]}],
+    generationConfig:{responseMimeType:'application/json',maxOutputTokens:650,
+     ...(model().startsWith('gemini-3')?{thinkingConfig:{thinkingLevel:'minimal'}}:{})}
+   },fetcher);
+   const raw=response.candidates?.[0]?.content?.parts?.filter(p=>typeof p.text==='string').map(p=>p.text).join('')||'';
+   parsed=JSON.parse(raw);
+  }catch(err){console.warn('[ai] Gemini unavailable',{status:err instanceof GeminiError?err.status:'invalid_or_network'});}
  }
- const text=resp.candidates?.[0]?.content?.parts?.filter(part=>typeof part.text==='string').map(part=>part.text).join('')||'';
- if(!text.trim())throw Error('Gemini returned an empty shopping response');
- const result=validatedShoppingResult(JSON.parse(text),active);
- console.info('[gemini] shopping chat complete',{durationMs:Date.now()-started,model:model(),catalogueSize:snapshot.length,results:result.products.length});
+ if(parsed===undefined&&groqConfigured()){
+  try{parsed=await groqJson(instruction,prompt,fetcher);provider='groq';}
+  catch(err){console.warn('[ai] Groq unavailable',{status:err instanceof Error&&'status' in err?(err as {status:number}).status:'invalid_or_network'});}
+ }
+ if(parsed===undefined){
+  const result=fallback(message,active);
+  return {...result,reply:'AI is temporarily unavailable. '+result.reply};
+ }
+ const result={...validatedShoppingResult(parsed,active),mode:provider};
+
+ console.info('[ai] shopping chat complete',{durationMs:Date.now()-started,provider,catalogueSize:snapshot.length,results:result.products.length});
  return result;
 }
-export async function draftListing(notes:{name:string;notes:string;category:string}){
- if(!geminiConfigured())throw new Error('AI listing generator requires GEMINI_API_KEY');
- const resp=await generateGemini({
-  systemInstruction:{parts:[{text:'Create a factual and concise South African e-commerce product listing. Never invent materials, origin, certifications or product claims not in the notes. Output JSON with keys title, description, tags (string array).'}]},
-  contents:[{role:'user',parts:[{text:JSON.stringify(notes)}]}],
-  generationConfig:{responseMimeType:'application/json',maxOutputTokens:800}
- });
- const raw=resp.candidates?.[0]?.content?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'';
- const data=JSON.parse(raw);
- if(!data||typeof data!=='object')throw Error('Invalid Gemini listing response');
+export async function draftListing(notes:{name:string;notes:string;category:string},fetcher:typeof fetch=fetch){
+ if(!geminiConfigured()&&!groqConfigured())throw Error('AI listing requires GEMINI_API_KEY or GROQ_API_KEY');
+ const instruction='Write a concise factual South African product listing using only supplied facts. Return JSON with title, description, tags (string array). Do not invent claims.';
+ let data:unknown;
+ if(geminiConfigured()){
+  try{
+   const response=await generateGemini({
+    systemInstruction:{parts:[{text:instruction}]},
+    contents:[{role:'user',parts:[{text:JSON.stringify(notes)}]}],
+    generationConfig:{responseMimeType:'application/json',maxOutputTokens:800}
+   },fetcher);
+   const raw=response.candidates?.[0]?.content?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'';
+   data=JSON.parse(raw);
+  }catch(err){console.warn('[ai] Gemini listing unavailable',{status:err instanceof GeminiError?err.status:'invalid_or_network'});}
+ }
+ if(data===undefined&&groqConfigured())data=await groqJson(instruction,JSON.stringify(notes),fetcher);
+ if(!data||typeof data!=='object'||Array.isArray(data))throw Error('AI listing providers unavailable');
+ const item=data as Record<string,unknown>;
  return {
-  title:String(data.title||'').slice(0,120),
-  description:String(data.description||'').slice(0,1000),
-  tags:Array.isArray(data.tags)?data.tags.slice(0,10).map((x:unknown)=>String(x).slice(0,30)):[]
+  title:String(item.title||'').slice(0,120),
+  description:String(item.description||'').slice(0,1000),
+  tags:Array.isArray(item.tags)?item.tags.slice(0,10).map((x:unknown)=>String(x).slice(0,30)):[]
  };
 }

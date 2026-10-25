@@ -96,3 +96,6 @@ Gemini is used by `POST /api/ai/chat` (product-aware, validated catalogue and ca
 The deployment can be built and run **without** the key; AI features only become active once the secret is added to Render.
 
 **Model access:** Older Gemini 2.5 models can return 404 to new Google AI projects even with a valid key. Use `gemini-3.1-flash-lite` as the default free-tier model. Check `GEMINI_MODEL` in Render if Google's API reports 404. Never log API keys or complete customer prompts.
+
+## Groq fallback for Gemini
+Configure `GROQ_API_KEY` and `GROQ_MODEL` on the Render API service (not in Angular). The default model is `llama-3.3-70b-versatile`. Gemini remains primary. If Gemini fails, Groq answers shopping chat and admin listing requests. If both providers fail, shopping chat falls back to catalogue search without any cart actions. Usage is subject to Groq account limits. Never commit API keys.
