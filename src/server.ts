@@ -18,6 +18,7 @@ import {shoppingAssistant,draftListing,geminiConfigured} from './ai.js';
 import {groqConfigured} from './groq.js';
 import {registerProfileRoutes} from './profile-routes.js';
 import {HttpError,errorResponse} from './http-error.js';
+import {currentIdentity,type Identity,type Role} from './auth.js';
 
 const app=express();app.disable('x-powered-by');
 // Render terminates TLS at its trusted reverse proxy.
@@ -46,7 +47,7 @@ app.use('/api/payfast/notify',(req,res,next)=>{
 const shopperLimiter=rateLimit({windowMs:15*60*1000,limit:240,standardHeaders:'draft-7',legacyHeaders:false});
 app.use('/api',(req,res,next)=>req.path==='/payfast/notify'?next():shopperLimiter(req,res,next));
 const aiLimiter=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
-type Role='admin'|'customer';type User={id:string;name:string;email:string;passwordHash:string;role:Role};
+type User={id:string;name:string;email:string;passwordHash:string;role:Role};
 type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;demoSeed?:boolean;delivery:any;createdAt:Date;paidAt?:Date};
 const memProducts=seedProducts.map(p=>({...p,tags:[...p.tags]}));
 let seedStatus:CatalogueSeedSummary|undefined;
@@ -73,13 +74,22 @@ async function users(email:string):Promise<User|undefined>{
  const u=await UserModel.findOne({email}).lean();return u?{id:String(u._id),email:String(u.email),name:String(u.name),passwordHash:String(u.passwordHash),role:u.role as Role}:undefined;
 }
 function token(u:{id:string;email:string;name:string;role:Role}){return jwt.sign({sub:u.id,email:u.email,name:u.name,role:u.role},secret,{expiresIn:'7d'});}
-function identity(req:Request):{sub:string;email:string;name:string;role:Role}|null{
- try{const v=(req.headers.authorization||'').replace(/^Bearer /i,'');return jwt.verify(v,secret) as any;}catch{return null;}
+async function userById(id:string):Promise<User|undefined>{
+ if(demo)return memUsers.find(u=>u.id===id);
+ if(!mongoose.isValidObjectId(id))return undefined;
+ const u=await UserModel.findById(id).lean();return u?{id:String(u._id),email:String(u.email),name:String(u.name),passwordHash:String(u.passwordHash),role:u.role as Role}:undefined;
 }
+// Set by guard() from the stored account, so handlers never act on stale token claims.
+const identities=new WeakMap<Request,Identity>();
+function identity(req:Request):Identity|null{return identities.get(req)??null;}
 const guard=(role?:Role)=>(req:Request,res:Response,next:NextFunction)=>{
- const u=identity(req);if(!u)return res.status(401).json({error:'Sign in required'});
- if(role&&u.role!==role)return res.status(403).json({error:'Admin access required'});
- next();
+ let claims:unknown;
+ try{claims=jwt.verify((req.headers.authorization||'').replace(/^Bearer /i,''),secret);}catch{return res.status(401).json({error:'Sign in required'});}
+ currentIdentity(claims,userById).then(u=>{
+  if(!u)return res.status(401).json({error:'Sign in required'});
+  if(role&&u.role!==role)return res.status(403).json({error:'Admin access required'});
+  identities.set(req,u);next();
+ }).catch(next);
 };
 const safe=(handler:(req:Request,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>Promise.resolve(handler(req,res)).catch(next);
 const publicUser=(u:User)=>({id:u.id,name:u.name,email:u.email,role:u.role});
