@@ -1,6 +1,7 @@
 import {groqConfigured,groqJson} from './groq.js';
 import type {Product} from './catalogue.js';
 import {searchCatalogue} from './catalogue.js';
+import {HttpError} from './http-error.js';
 
 type Action={productId:string;quantity:number};
 type Part={text?:string;functionCall?:{name:string;args?:Record<string,unknown>;id?:string};functionResponse?:{name:string;response:unknown;id?:string}};
@@ -110,7 +111,7 @@ export async function shoppingAssistant(message:string,products:Product[],fetche
  return result;
 }
 export async function draftListing(notes:{name:string;notes:string;category:string},fetcher:typeof fetch=fetch){
- if(!geminiConfigured()&&!groqConfigured())throw Error('AI listing requires GEMINI_API_KEY or GROQ_API_KEY');
+ if(!geminiConfigured()&&!groqConfigured())throw new HttpError(503,'AI listing requires GEMINI_API_KEY or GROQ_API_KEY');
  const instruction='Write a concise factual South African product listing using only supplied facts. Return JSON with title, description, tags (string array). Do not invent claims.';
  let data:unknown;
  if(geminiConfigured()){
@@ -125,7 +126,7 @@ export async function draftListing(notes:{name:string;notes:string;category:stri
   }catch(err){console.warn('[ai] Gemini listing unavailable',{status:err instanceof GeminiError?err.status:'invalid_or_network'});}
  }
  if(data===undefined&&groqConfigured())data=await groqJson(instruction,JSON.stringify(notes),fetcher);
- if(!data||typeof data!=='object'||Array.isArray(data))throw Error('AI listing providers unavailable');
+ if(!data||typeof data!=='object'||Array.isArray(data))throw new HttpError(503,'AI listing providers unavailable');
  const item=data as Record<string,unknown>;
  return {
   title:String(item.title||'').slice(0,120),

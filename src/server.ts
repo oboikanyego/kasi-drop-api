@@ -17,6 +17,7 @@ import {seedDemoUsersAndOrders,type DemoSeedResult} from './demo-seeding.js';
 import {shoppingAssistant,draftListing,geminiConfigured} from './ai.js';
 import {groqConfigured} from './groq.js';
 import {registerProfileRoutes} from './profile-routes.js';
+import {HttpError,errorResponse} from './http-error.js';
 
 const app=express();app.disable('x-powered-by');
 // Render terminates TLS at its trusted reverse proxy.
@@ -121,10 +122,10 @@ app.get('/api/auth/me',guard(),(req,res)=>{const u=identity(req)!;res.json({user
 async function getOrder(id:string):Promise<Order|undefined>{return demo?memOrders.find(o=>o.id===id):await OrderModel.findOne({id}).lean() as unknown as Order||undefined;}
 async function updateOrder(id:string,changes:Partial<Order>){if(demo){const o=memOrders.find(o=>o.id===id);if(o)Object.assign(o,changes);}else await OrderModel.updateOne({id},{$set:changes});}
 async function decrementStock(lines:Order['items']){
- if(demo){for(const l of lines){const p=memProducts.find(p=>p.id===l.productId);if(!p||p.stock<l.quantity)throw Error('Stock not available');}for(const l of lines)memProducts.find(p=>p.id===l.productId)!.stock-=l.quantity;return;}
+ if(demo){for(const l of lines){const p=memProducts.find(p=>p.id===l.productId);if(!p||p.stock<l.quantity)throw new HttpError(409,'Insufficient stock for '+l.name);}for(const l of lines)memProducts.find(p=>p.id===l.productId)!.stock-=l.quantity;return;}
  // MongoDB multi-document transaction requires Atlas replica set; roll back fully on errors.
  const session=await mongoose.startSession();try{await session.withTransaction(async()=>{
-  for(const l of lines){const result=await ProductModel.updateOne({id:l.productId,active:true,stock:{$gte:l.quantity}},{$inc:{stock:-l.quantity}},{session});if(result.modifiedCount!==1)throw Error('Insufficient stock for '+l.name);}
+  for(const l of lines){const result=await ProductModel.updateOne({id:l.productId,active:true,stock:{$gte:l.quantity}},{$inc:{stock:-l.quantity}},{session});if(result.modifiedCount!==1)throw new HttpError(409,'Insufficient stock for '+l.name);}
  });}finally{await session.endSession();}
 }
 function paymentBase(o:Order){
@@ -238,7 +239,7 @@ app.post('/api/admin/ai/listing',guard('admin'),aiLimiter,safe(async(req,res)=>{
 registerProfileRoutes(app,guard(),identity,demo,id=>memUsers.find(user=>user.id===id));
 app.use((err:unknown,req:Request,res:Response,next:NextFunction)=>{
  if(err instanceof z.ZodError)return res.status(400).json({error:'Validation failed',details:err.flatten()});
- console.error(err);return res.status(500).json({error:err instanceof Error&&['Insufficient stock','Cart must','Invalid quantity','Duplicate product'].some(t=>err.message.startsWith(t))?err.message:'Request could not be completed'});
+ const {status,body}=errorResponse(err);if(status>=500)console.error(err);return res.status(status).json(body);
 });
 const port=Number(process.env.PORT||10000);
 initialize().then(()=>app.listen(port,'0.0.0.0',()=>console.log('KasiDrop API on :'+port))).catch(err=>{console.error('Failed to start',err);process.exit(1)});
