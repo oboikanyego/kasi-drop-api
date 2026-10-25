@@ -14,5 +14,7 @@ services:
         value: 'true'
       - key: CLIENT_URL
         value: https://kasi-drop.netlify.app
+      - key: MONGODB_DB_NAME
+        value: kasidrop
       - key: PUBLIC_API_URL
         value: https://kasi-drop-api.onrender.com

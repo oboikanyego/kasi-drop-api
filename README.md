@@ -41,3 +41,7 @@ Chat uses Claude if \`ANTHROPIC_API_KEY\` is configured; otherwise uses grounded
 Render Node Web Service: \`npm install && npm run build\`, start \`npm start\`, health path \`/health\`. Region Frankfurt is preferred for SA audiences if available. Set \`CLIENT_URL\` to the actual Netlify site. Never expose keys in the UI.
 
 See [UI repository](https://github.com/oboikanyego/kasi-drop-ui).
+
+## MongoDB configuration
+
+MongoDB-backed mode (set `DEMO_MODE=false`) requires `MONGODB_URI` (cluster connection string) and `MONGODB_DB_NAME` (database name, e.g. `kasidrop`). Both the API and `npm run seed` pass the database name explicitly to Mongoose. With `DEMO_MODE=true`, the database is not accessed, and data is temporary.

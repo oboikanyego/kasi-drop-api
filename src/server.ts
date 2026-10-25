@@ -33,7 +33,7 @@ async function initialize(){
   console.log('DEMO MODE: ephemeral data, sandbox-only mock checkout; never use for real payments.');
  }else{
   if(!process.env.MONGODB_URI)throw Error('MONGODB_URI must be configured when DEMO_MODE is false');
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {dbName: process.env.MONGODB_DB_NAME || 'kasidrop'});
   if(await ProductModel.countDocuments()===0)await ProductModel.insertMany(seedProducts);
  }
 }
