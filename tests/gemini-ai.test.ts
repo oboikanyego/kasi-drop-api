@@ -41,3 +41,28 @@ test('a restricted Gemini model returns a clear 404 diagnostic',async()=>{
   if(oldModel===undefined)delete process.env.GEMINI_MODEL;else process.env.GEMINI_MODEL=oldModel;
  }
 });
+
+test('single-call shopping responses only return real available products',async()=>{
+ const {validatedShoppingResult}=await import('../src/ai.js');
+ const first=seedProducts.find(p=>p.active&&p.stock>0);
+ assert.ok(first);
+ const result=validatedShoppingResult({reply:'Local picks',productIds:[first.id,'made-up-id'],cartActions:[{productId:'made-up-id',quantity:1}]},seedProducts);
+ assert.deepEqual(result.products.map(p=>p.id),[first.id]);
+ assert.deepEqual(result.cartActions,[]);
+ assert.equal(result.mode,'gemini');
+});
+test('cart actions reject fractional, negative, missing and overstock quantities',async()=>{
+ const {validatedShoppingResult}=await import('../src/ai.js');
+ const first=seedProducts.find(p=>p.active&&p.stock>0);
+ assert.ok(first);
+ const requests=[{productId:first.id,quantity:-1},{productId:first.id,quantity:1.5},{productId:first.id,quantity:9999},{productId:'nonexistent',quantity:1},{productId:first.id,quantity:1}];
+ const result=validatedShoppingResult({reply:'Added',cartActions:requests},seedProducts);
+ assert.deepEqual(result.cartActions,[{productId:first.id,quantity:1}]);
+});
+test('empty or untrusted result is safe',async()=>{
+ const {validatedShoppingResult}=await import('../src/ai.js');
+ const result=validatedShoppingResult({reply:123,productIds:[12,null],cartActions:'hack'},seedProducts);
+ assert.equal(typeof result.reply,'string');
+ assert.deepEqual(result.products,[]);
+ assert.deepEqual(result.cartActions,[]);
+});
