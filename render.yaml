@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: kasi-drop-api
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEMO_MODE
+        value: 'true'
+      - key: CLIENT_URL
+        value: https://kasi-drop.netlify.app
+      - key: PUBLIC_API_URL
+        value: https://kasi-drop-api.onrender.com
