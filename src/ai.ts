@@ -2,6 +2,7 @@ import { groqConfigured, groqJson } from './groq.js';
 import type { Product } from './catalogue.js';
 import { searchCatalogue } from './catalogue.js';
 import { HttpError } from './http-error.js';
+import { attemptTimeout, canRetry } from './deadline.js';
 
 type Action = { productId: string; quantity: number };
 type Part = {
@@ -27,9 +28,15 @@ export class GeminiError extends Error {
     );
   }
 }
+/** Overall time a shopper waits for chat: Gemini (with its retry), then Groq, then the catalogue fallback. */
+export const chatBudgetMs = 12_000;
+/** Time kept back from Gemini so Groq can still answer inside the chat budget. */
+export const groqReserveMs = 4_500;
+const listingBudgetMs = 20_000;
 export async function generateGemini(
   body: Record<string, unknown>,
   fetcher: typeof fetch = fetch,
+  deadline = Infinity,
 ): Promise<GeminiResponse> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) throw new GeminiError(503);
@@ -45,23 +52,26 @@ export async function generateGemini(
     },
   });
   // Retry only one transient provider failure; avoid amplifying Gemini overload.
+  // Each attempt is capped at 7s and by the caller's deadline; a retry runs only if it still fits.
   for (let attempt = 0; attempt < 2; attempt++) {
+    const timeout = attemptTimeout(7000, deadline);
+    if (timeout === null) throw new GeminiError(504);
     try {
       const response = await fetcher(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
         body: payload,
-        signal: AbortSignal.timeout(7000),
+        signal: AbortSignal.timeout(timeout),
       });
       if (response.ok) return (await response.json()) as GeminiResponse;
-      if (attempt === 0 && [502, 503, 504].includes(response.status)) {
+      if (attempt === 0 && [502, 503, 504].includes(response.status) && canRetry(deadline)) {
         await new Promise((resolve) => setTimeout(resolve, 350));
         continue;
       }
       throw new GeminiError(response.status);
     } catch (error) {
       if (error instanceof GeminiError) throw error;
-      if (attempt === 0) {
+      if (attempt === 0 && canRetry(deadline)) {
         await new Promise((resolve) => setTimeout(resolve, 350));
         continue;
       }
@@ -118,6 +128,7 @@ export async function shoppingAssistant(
   message: string,
   products: Product[],
   fetcher: typeof fetch = fetch,
+  budgetMs = chatBudgetMs,
 ) {
   if (!geminiConfigured() && !groqConfigured()) return fallback(message, products);
   const active = products.filter((p) => p.active);
@@ -130,6 +141,8 @@ export async function shoppingAssistant(
     description: p.description.slice(0, 110),
   }));
   const started = Date.now();
+  const deadline = started + budgetMs;
+  const groqReserve = Math.min(groqReserveMs, budgetMs / 2);
   // Single request instead of 2-4 sequential tool-use turns. The model receives
   // accurate stock/prices in its prompt; its suggestions are validated server-side.
   const instruction =
@@ -152,6 +165,7 @@ export async function shoppingAssistant(
           },
         },
         fetcher,
+        groqConfigured() ? deadline - groqReserve : deadline,
       );
       const raw =
         response.candidates?.[0]?.content?.parts
@@ -167,7 +181,7 @@ export async function shoppingAssistant(
   }
   if (parsed === undefined && groqConfigured()) {
     try {
-      parsed = await groqJson(instruction, prompt, fetcher);
+      parsed = await groqJson(instruction, prompt, fetcher, deadline);
       provider = 'groq';
     } catch (err) {
       console.warn('[ai] Groq unavailable', {
@@ -200,6 +214,7 @@ export async function draftListing(
     throw new HttpError(503, 'AI listing requires GEMINI_API_KEY or GROQ_API_KEY');
   const instruction =
     'Write a concise factual South African product listing using only supplied facts. Return JSON with title, description, tags (string array). Do not invent claims.';
+  const deadline = Date.now() + listingBudgetMs;
   let data: unknown;
   if (geminiConfigured()) {
     try {
@@ -210,6 +225,7 @@ export async function draftListing(
           generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 800 },
         },
         fetcher,
+        groqConfigured() ? deadline - groqReserveMs : deadline,
       );
       const raw =
         response.candidates?.[0]?.content?.parts
@@ -224,7 +240,7 @@ export async function draftListing(
     }
   }
   if (data === undefined && groqConfigured())
-    data = await groqJson(instruction, JSON.stringify(notes), fetcher);
+    data = await groqJson(instruction, JSON.stringify(notes), fetcher, deadline);
   if (!data || typeof data !== 'object' || Array.isArray(data))
     throw new HttpError(503, 'AI listing providers unavailable');
   const item = data as Record<string, unknown>;
