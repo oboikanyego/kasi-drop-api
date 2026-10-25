@@ -9,8 +9,16 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import { payfastSignature, verifyPayfastItn } from './payfast-signature.js';
 import { z } from 'zod';
-import { categories, seedProducts, searchCatalogue, quote, type Product } from './catalogue.js';
+import {
+  categories,
+  seedProducts,
+  searchCatalogue,
+  quote,
+  shippingRule,
+  type Product,
+} from './catalogue.js';
 import { catalogueFilter, catalogueSort, pagination } from './catalogue-query.js';
+import { payfastConfig, payfastConfigured } from './payfast-config.js';
 import { ProductModel, UserModel, OrderModel } from './models.js';
 import { connectMongo } from './db.js';
 import { seedCatalogue, type CatalogueSeedSummary } from './seeding.js';
@@ -308,14 +316,9 @@ app.get('/api/meta', (req, res) =>
     currency: 'ZAR',
     categories,
     demoMode: demo,
-    checkoutEnabled:
-      demo ||
-      Boolean(
-        process.env.PAYFAST_MERCHANT_ID &&
-          process.env.PAYFAST_MERCHANT_KEY &&
-          process.env.PAYFAST_PASSPHRASE &&
-          process.env.PAYFAST_MODE === 'sandbox',
-      ),
+    checkoutEnabled: demo || payfastConfigured(),
+    // The rule quote() charges, so the UI never shows a different delivery fee.
+    shipping: { freeFrom: shippingRule.freeFromCents / 100, fee: shippingRule.feeCents / 100 },
     aiEnabled: geminiConfigured() || groqConfigured(),
   }),
 );
@@ -587,16 +590,12 @@ async function expireReservations() {
     console.info('[reservations] released expired PayFast reservations', { orders: expired });
 }
 function paymentBase(o: Order) {
-  const merchantId = process.env.PAYFAST_MERCHANT_ID,
-    merchantKey = process.env.PAYFAST_MERCHANT_KEY;
-  if (!merchantId || !merchantKey || !process.env.PAYFAST_PASSPHRASE)
-    throw Error('PayFast sandbox is not configured');
-  if (process.env.PAYFAST_MODE !== 'sandbox')
-    throw Error('Only PayFast sandbox is enabled in this release');
+  const config = payfastConfig();
+  if (!config) throw Error('PayFast sandbox is not configured');
   const api = process.env.PUBLIC_API_URL || 'http://localhost:10000';
   return {
-    merchant_id: merchantId,
-    merchant_key: merchantKey,
+    merchant_id: config.merchantId,
+    merchant_key: config.merchantKey,
     return_url: clientUrl + '/orders?payment=return',
     cancel_url: clientUrl + '/orders?payment=cancel',
     notify_url: api + '/api/payfast/notify',
@@ -631,15 +630,8 @@ app.post(
       delivery: payload.delivery,
       createdAt: new Date(),
     };
-    if (payload.paymentMethod === 'payfast') {
-      if (
-        !process.env.PAYFAST_MERCHANT_ID ||
-        !process.env.PAYFAST_MERCHANT_KEY ||
-        !process.env.PAYFAST_PASSPHRASE ||
-        process.env.PAYFAST_MODE !== 'sandbox'
-      )
-        return res.status(503).json({ error: 'PayFast sandbox is not configured' });
-    }
+    if (payload.paymentMethod === 'payfast' && !payfastConfigured())
+      return res.status(503).json({ error: 'PayFast sandbox is not configured' });
     if (demo) memOrders.push(order);
     else await OrderModel.create(order);
     if (payload.paymentMethod === 'payfast') {

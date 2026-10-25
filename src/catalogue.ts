@@ -354,6 +354,8 @@ export function searchCatalogue(
         )),
   );
 }
+/** Delivery is free from R750; otherwise R79. Published to the UI through GET /api/meta. */
+export const shippingRule = { freeFromCents: 75000, feeCents: 7900 } as const;
 export function quote(products: Product[], items: { productId: string; quantity: number }[]) {
   if (!Array.isArray(items) || !items.length || items.length > 30)
     throw new HttpError(400, 'Cart must have 1–30 products');
@@ -377,7 +379,7 @@ export function quote(products: Product[], items: { productId: string; quantity:
       image: p.image,
     });
   }
-  const shippingCents = subtotalCents >= 75000 ? 0 : 7900;
+  const shippingCents = subtotalCents >= shippingRule.freeFromCents ? 0 : shippingRule.feeCents;
   return {
     lines,
     subtotal: subtotalCents / 100,
