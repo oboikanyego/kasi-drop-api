@@ -1,3 +1,4 @@
+import {inCents} from './order-rules.js';
 export type Product = { id:string; name:string; description:string; category:string; price:number; stock:number; image:string; tags:string[]; featured:boolean; active:boolean };
 export const categories = ['All','Food & Drink','Fashion','Home & Living','Crafts'];
 const img = (id:string) => 'https://images.unsplash.com/'+id+'?auto=format&fit=crop&w=800&q=85';
@@ -23,7 +24,7 @@ export function searchCatalogue(products:Product[], query='', category='All', ma
 }
 export function quote(products:Product[], items:{productId:string;quantity:number}[]){
  if(!Array.isArray(items)||!items.length||items.length>30) throw Error('Cart must have 1–30 products');
- const seen=new Set<string>(); let subtotal=0;const lines=[];
+ const seen=new Set<string>(); let subtotalCents=0;const lines=[];
  for(const item of items){
   if(seen.has(item.productId))throw Error('Duplicate product in cart');
   seen.add(item.productId);
@@ -31,8 +32,9 @@ export function quote(products:Product[], items:{productId:string;quantity:numbe
   if(!p)throw Error('Product not found: '+item.productId);
   if(!Number.isInteger(item.quantity)||item.quantity<1||item.quantity>20)throw Error('Invalid quantity');
   if(p.stock<item.quantity)throw Error('Insufficient stock for '+p.name);
-  subtotal+=p.price*item.quantity;
+  subtotalCents+=inCents(p.price)*item.quantity;
   lines.push({productId:p.id,name:p.name,price:p.price,quantity:item.quantity,image:p.image});
  }
- return {lines,subtotal,shipping:subtotal>=750?0:79,total:subtotal+(subtotal>=750?0:79)};
+ const shippingCents=subtotalCents>=75000?0:7900;
+ return {lines,subtotal:subtotalCents/100,shipping:shippingCents/100,total:(subtotalCents+shippingCents)/100};
 }

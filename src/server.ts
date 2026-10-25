@@ -64,7 +64,7 @@ const checkoutSchema=z.object({
 });
 const productSchema=z.object({name:z.string().min(3).max(100),description:z.string().min(10).max(1500),category:z.string().min(2),price:z.number().positive().max(100000),stock:z.number().int().min(0),image:z.string().url().max(500),tags:z.array(z.string().max(30)).max(10).default([]),featured:z.boolean().default(false),active:z.boolean().default(true)});
 app.get('/health',(req,res)=>res.json({ok:true,app:'KasiDrop API',mode:demo?'demo':'database',timestamp:new Date().toISOString()}));
-app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID),aiEnabled:Boolean(process.env.ANTHROPIC_API_KEY)}));
+app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID&&process.env.PAYFAST_MERCHANT_KEY&&process.env.PAYFAST_PASSPHRASE&&process.env.PAYFAST_MODE==='sandbox'),aiEnabled:Boolean(process.env.ANTHROPIC_API_KEY)}));
 app.get('/api/products',safe(async(req,res)=>{
  const all=await products(),category=String(req.query.category||'All'),search=String(req.query.q||''),maxPrice=Number(req.query.maxPrice)||undefined;
  const filtered=searchCatalogue(all,search,category,maxPrice);
@@ -74,7 +74,8 @@ app.get('/api/products',safe(async(req,res)=>{
 app.get('/api/products/:id',safe(async(req,res)=>{const p=(await products()).find(p=>p.id===req.params.id&&p.active);if(!p)return res.status(404).json({error:'Not found'});res.json({product:p,similar:searchCatalogue(await products(),p.tags[0]||p.category).filter(x=>x.id!==p.id).slice(0,4)});}));
 app.post('/api/auth/register',rateLimit({windowMs:15*60*1000,limit:20}),safe(async(req,res)=>{
  const parsed=registration.parse(req.body);if(await users(parsed.email))return res.status(409).json({error:'Email is already registered'});
- const u:User={id:randomUUID(),...parsed,passwordHash:await bcrypt.hash(parsed.password,12),role:'customer'};
+ const {password,...profile}=parsed;
+ const u:User={id:randomUUID(),...profile,passwordHash:await bcrypt.hash(password,12),role:'customer'};
  if(demo)memUsers.push(u);else{const saved=await UserModel.create({email:u.email,name:u.name,passwordHash:u.passwordHash,role:u.role});u.id=String(saved._id);}
  res.status(201).json({user:publicUser(u),token:token(u)});
 }));
@@ -136,7 +137,7 @@ app.post('/api/payfast/notify',safe(async(req,res)=>{
  const actual=Buffer.from(fields.signature||'','utf8'),expected=Buffer.from(pfSignature(fields),'utf8');
  if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return res.sendStatus(400);
  const order=await getOrder(fields.m_payment_id||'');
- if(!order||fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID||Number(fields.amount_gross)!==order.total)return res.sendStatus(400);
+ if(!order||fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID||!Number.isFinite(Number(fields.amount_gross))||Math.round(Number(fields.amount_gross)*100)!==Math.round(order.total*100))return res.sendStatus(400);
  // PayFast requires server confirmation. Do not trust the callback alone.
  const validation=new URLSearchParams(fields);const remote=await fetch('https://sandbox.payfast.co.za/eng/query/validate',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:validation.toString(),signal:AbortSignal.timeout(12000)});
  if(!remote.ok||(await remote.text()).trim()!=='VALID')return res.sendStatus(400);
