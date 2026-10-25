@@ -109,3 +109,15 @@ The seed also includes **12 additional retailer-style SKUs** (`mock-*`) for comm
 Existing seeded product IDs remain unchanged because orders and demo fixtures use them. MongoDB upsert-on-insert **adds only missing new IDs**, leaving previous and manually edited items untouched. After merging/deploying in persistent mode, the automatic seed inserts the 12 `mock-*` products; it does not replace the pre-existing 12 product records.
 
 Photos use direct images.unsplash.com CDN URLs, with size/quality parameters. Unsplash licensing generally permits free commercial use, but respect applicable brand/likeness restrictions. The API's CI includes a **live image URL audit** (`npx tsx scripts/audit-catalogue-images.ts`), validating HTTP success and image content type for every unique seeded image. A passing CI checks availability at that moment, not a permanent guarantee against future CDN changes. Store copies in controlled asset hosting if long-term availability is essential.
+
+## Controlled retail demo catalogue refresh
+
+Use this **only in a controlled demo/staging environment**, not against a production shop with real stock.
+
+Run `npm run refresh:catalogue` in the API environment to produce a **read-only dry-run**. It shows the 12 retail `mock-*` SKU IDs that are missing, unchanged legacy items eligible to hide, and legacy items protected from changes.
+
+After reviewing the plan and taking an Atlas backup, explicitly apply using `CONFIRM_DEMO_CATALOGUE_REFRESH=YES npm run refresh:catalogue -- --apply`.
+
+The apply path inserts missing retail products without replacing existing products, then **deactivates (does not delete)** original legacy seed items only if every tracked field, including price, photo, tags and stock, still matches the original seed and they are not referenced by unsettled orders. Previously modified stock/prices or content are protected. Accounts, orders and custom products are never edited. This is deliberately conservative: not all 12 legacy products will disappear if they were edited or still have unsettled orders. Resolve those cases manually after reviewing order state.
+
+The original `npm run seed` remains insert-only and does not reactivate retired entries. This refresh never runs automatically on deployment; it must be explicitly applied to the database connected to the correct Render service. Refresh the storefront after the operation to see the latest active listings.
