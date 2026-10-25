@@ -70,7 +70,82 @@ export const addressInputSchema = z
   })
   .strict();
 export type AddressInput = z.infer<typeof addressInputSchema>;
-export type SavedAddress = AddressInput & { id: string };
+export type Province = (typeof provinces)[number];
+/** A stored address. Province is '' only for legacy records saved before it was validated. */
+export type SavedAddress = Omit<AddressInput, 'province'> & { id: string; province: Province | '' };
+const addressLabels = ['Home', 'Work', 'Other'] as const;
+export type ProfileData = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'customer';
+  phone: string;
+  about: string;
+  preferredLanguage: string;
+  marketingOptIn: boolean;
+  memberSince: string | null;
+  avatarUpdatedAt: string | null;
+  addresses: SavedAddress[];
+};
+/** What formatProfile reads: a stored user document, or a demo user merged with its profile. */
+export type ProfileSource = {
+  _id?: unknown;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  phone?: string | null;
+  about?: string | null;
+  preferredLanguage?: string | null;
+  marketingOptIn?: boolean | null;
+  memberSince?: string | null;
+  createdAt?: Date | string | null;
+  avatarUpdatedAt?: Date | string | null;
+  addresses?: ReadonlyArray<{ [K in keyof SavedAddress]?: unknown }> | null;
+};
+const str = (value: unknown) => (typeof value === 'string' ? value : '');
+const oneOf = <T extends string>(allowed: readonly T[], value: unknown): T | undefined =>
+  allowed.find((option) => option === value);
+const isoDate = (value: Date | string | null | undefined) =>
+  value ? new Date(value).toISOString() : null;
+/**
+ * The profile the API returns, with every field present and well-typed even when the stored
+ * record is incomplete: missing text becomes '', an unknown role is a customer, an unknown
+ * address label is 'Other', an unknown province is '' (kept so the shopper can fix it), and an
+ * address without an id, which could never be edited or removed, is left out.
+ */
+export function formatProfile(u: ProfileSource, id?: string): ProfileData {
+  return {
+    id: id || String(u._id),
+    name: str(u.name),
+    email: str(u.email),
+    role: u.role === 'admin' ? 'admin' : 'customer',
+    phone: str(u.phone),
+    about: str(u.about),
+    preferredLanguage: str(u.preferredLanguage) || 'English',
+    marketingOptIn: Boolean(u.marketingOptIn),
+    memberSince: u.memberSince || isoDate(u.createdAt),
+    avatarUpdatedAt: isoDate(u.avatarUpdatedAt),
+    addresses: normalizeAddressDefaults(
+      (u.addresses || [])
+        .filter((a) => typeof a.id === 'string' && a.id)
+        .map((a) => ({
+          id: str(a.id),
+          label: oneOf(addressLabels, a.label) ?? 'Other',
+          nickname: str(a.nickname),
+          recipientName: str(a.recipientName),
+          phone: str(a.phone),
+          street: str(a.street),
+          unit: str(a.unit),
+          suburb: str(a.suburb),
+          city: str(a.city),
+          province: oneOf(provinces, a.province) ?? '',
+          postalCode: str(a.postalCode),
+          deliveryNotes: str(a.deliveryNotes),
+          isDefault: Boolean(a.isDefault),
+        })),
+    ),
+  };
+}
 
 /** Exactly one default whenever the user has at least one address. */
 export function normalizeAddressDefaults(
