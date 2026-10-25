@@ -30,6 +30,7 @@ Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
 - \`POST /api/auth/logout\`, \`POST /api/auth/session\` (exchange a Bearer token for the session cookie)
 
 **Sessions:** login and register set an httpOnly \`kasi_session\` cookie (\`SameSite=Lax\`, \`Path=/api\`, \`Secure\` when \`NODE_ENV=production\`, 7 days), so browser scripts never see the token. Cookie-authenticated \`POST\`/\`PUT\`/\`PATCH\`/\`DELETE\` requests must send an \`X-KasiDrop-CSRF\` header. A \`Authorization: Bearer\` token (returned in the login body) is still accepted for API clients and needs no CSRF header.
+
 - \`POST /api/orders/checkout\`, \`GET /api/orders\`, \`GET /api/orders/:id\`
 - \`GET /api/admin/summary\`, \`GET /api/admin/orders\`, \`PATCH /api/admin/orders/:id\`
 - \`POST /api/admin/products\`, \`PATCH /api/admin/products/:id\`
