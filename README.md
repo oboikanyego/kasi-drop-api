@@ -35,7 +35,7 @@ The starter Render blueprint enables **DEMO_MODE=true**. Data is ephemeral and p
 
 For persistent deployment set \`DEMO_MODE=false\`, \`MONGODB_URI\`, a strong \`JWT_SECRET\`, and provision a trusted admin via \`SEED_ADMIN_EMAIL\` / \`SEED_ADMIN_PASSWORD\` with \`npm run seed\` (do not commit secrets). Then configure PayFast sandbox keys and \`PUBLIC_API_URL\`. Only sandbox PayFast is enabled. Actual payments, refunds, ITN failure recovery, security review, stock reservations and live-mode gateway verification need further hardening **before production commerce**.
 
-Chat uses Claude if \`ANTHROPIC_API_KEY\` is configured; otherwise uses grounded catalogue fallback. Product search is lexical with South African contextual synonyms; vector embeddings are a later enhancement and **not yet implemented**.
+Chat uses Google Gemini (`GEMINI_API_KEY`, default `gemini-2.5-flash-lite`) when configured; otherwise uses a grounded catalogue fallback. Product search is lexical with South African contextual synonyms; vector embeddings are a later enhancement and **not yet implemented**.
 
 ## Deployment
 Render Node Web Service: \`npm install && npm run build\`, start \`npm start\`, health path \`/health\`. Region Frankfurt is preferred for SA audiences if available. Set \`CLIENT_URL\` to the actual Netlify site. Never expose keys in the UI.
@@ -85,3 +85,12 @@ On app startup in database mode, `seedDemoUsersAndOrders()` inserts missing demo
 The health endpoint reports demo account and order counts. Admin statistics exclude simulated payments from **real revenue** while reporting `simulatedRevenue` and `demoOrders` separately. The customer/admin orders API includes the `demoSeed` marker for prominent test labels. Once the initial seed has succeeded, change `SEED_DEMO_USERS=false` to stop future automatic demo account creation. This does not delete existing records; remove only specifically marked demo data deliberately, never by wiping live collections.
 
 **Security:** Never publish demo admin credentials, use a common publicly known password, expose seed secrets to the frontend or include them in Git. Remove demo accounts before opening admin access to real users. If the public storefront remains online, do not advertise these accounts on its login page.
+
+## Gemini AI setup (replaces Anthropic)
+
+Get a free-tier Gemini API key from https://aistudio.google.com/api-keys and set `GEMINI_API_KEY` on the **Render API service** under Environment. Do not set it on Netlify or in Angular.
+Optional `GEMINI_MODEL=gemini-2.5-flash-lite` (default). Remove obsolete `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` variables after verifying the new integration.
+
+Gemini is used by `POST /api/ai/chat` (product-aware, validated catalogue and cart suggestions) and `POST /api/admin/ai/listing` (factual product listing drafts). The shopping assistant still falls back to catalogue search when no key is configured. Limits on AI calls remain in effect. The provider's free tier has request/usage quotas and may use inputs to improve Google products; do not send customer PII, secrets, order details or other sensitive information. Check Google's current free-tier eligibility and limits before relying on it in production.
+
+The deployment can be built and run **without** the key; AI features only become active once the secret is added to Render.
