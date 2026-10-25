@@ -61,3 +61,27 @@ A manual alternative (after configuring MongoDB env vars): `npm run seed`. This 
 ### Confirm Atlas content
 
 Once configured, check `/health` for `mode:"database"` and non-zero `catalogue.activeProducts`. The collections are `kasiproducts`, `kasiusers`, `kasiorders` in the selected `kasidrop` database. You can verify `kasiproducts` counts directly in Atlas Data Explorer. Avoid treating public demo records as real customer data.
+
+
+## Optional database-backed demo accounts and orders
+
+Set `SEED_DEMO_USERS=true` **only in a controlled testing environment**. Supply two different strong secrets in the server's environment:
+- `SEED_DEMO_ADMIN_PASSWORD` (minimum 16 characters, demo admin)
+- `SEED_DEMO_CUSTOMER_PASSWORD` (minimum 16 characters, shared by the three demo customers)
+
+The following fictional accounts are created if missing:
+
+| Role | Email |
+| --- | --- |
+| Demo admin | `demo.admin@kasidrop.test` |
+| Demo customer | `thandi.demo@kasidrop.test` |
+| Demo customer | `sipho.demo@kasidrop.test` |
+| Demo customer | `naledi.demo@kasidrop.test` |
+
+The five illustrative orders use fixed IDs `KDTEST01-ORDER` through `KDTEST05-ORDER`, with statuses pending_payment, paid, processing, shipped and delivered. All have `demoSeed:true`, payment method `demo_seed`, clearly synthetic delivery addresses, and products drawn from the sample catalogue. **These orders have never been paid, shipped or fulfilled**.
+
+On app startup in database mode, `seedDemoUsersAndOrders()` inserts missing demo users and orders. It never overwrites existing passwords, user roles or orders, never charges a customer, and never subtracts product stock. It stops rather than taking over a conflicting non-demo account or order. Run `npm run seed` manually for the same idempotent behaviour.
+
+The health endpoint reports demo account and order counts. Admin statistics exclude simulated payments from **real revenue** while reporting `simulatedRevenue` and `demoOrders` separately. The customer/admin orders API includes the `demoSeed` marker for prominent test labels. Once the initial seed has succeeded, change `SEED_DEMO_USERS=false` to stop future automatic demo account creation. This does not delete existing records; remove only specifically marked demo data deliberately, never by wiping live collections.
+
+**Security:** Never publish demo admin credentials, use a common publicly known password, expose seed secrets to the frontend or include them in Git. Remove demo accounts before opening admin access to real users. If the public storefront remains online, do not advertise these accounts on its login page.

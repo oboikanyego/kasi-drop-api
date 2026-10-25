@@ -20,5 +20,11 @@ services:
         value: kasidrop
       - key: JWT_SECRET
         sync: false # Mandatory when DEMO_MODE=false
+      - key: SEED_DEMO_USERS
+        value: 'false' # Optional controlled demo seeding; turn off after the first seed
+      - key: SEED_DEMO_ADMIN_PASSWORD
+        sync: false # Secret only when SEED_DEMO_USERS=true
+      - key: SEED_DEMO_CUSTOMER_PASSWORD
+        sync: false # Secret only when SEED_DEMO_USERS=true
       - key: PUBLIC_API_URL
         value: https://kasi-drop-api.onrender.com

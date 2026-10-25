@@ -12,6 +12,7 @@ import {categories,seedProducts,searchCatalogue,quote,type Product} from './cata
 import {ProductModel,UserModel,OrderModel} from './models.js';
 import {connectMongo} from './db.js';
 import {seedCatalogue,type CatalogueSeedSummary} from './seeding.js';
+import {seedDemoUsersAndOrders,type DemoSeedResult} from './demo-seeding.js';
 import {shoppingAssistant,draftListing} from './ai.js';
 
 const app=express();app.disable('x-powered-by');
@@ -27,9 +28,10 @@ app.use(express.json({limit:'32kb'}));app.use(express.urlencoded({extended:false
 app.use('/api',rateLimit({windowMs:15*60*1000,limit:240,standardHeaders:'draft-7',legacyHeaders:false}));
 const aiLimiter=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
 type Role='admin'|'customer';type User={id:string;name:string;email:string;passwordHash:string;role:Role};
-type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;delivery:any;createdAt:Date;paidAt?:Date};
+type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;demoSeed?:boolean;delivery:any;createdAt:Date;paidAt?:Date};
 const memProducts=seedProducts.map(p=>({...p,tags:[...p.tags]}));
 let seedStatus:CatalogueSeedSummary|undefined;
+let demoSeedStatus:DemoSeedResult|undefined;
 const memUsers:User[]=[];const memOrders:Order[]=[];
 async function initialize(){
  if(demo){
@@ -40,6 +42,8 @@ async function initialize(){
   await connectMongo();
   // Idempotent: inserts missing catalogue products and preserves all existing edits.
   seedStatus=await seedCatalogue();
+  // Demo fixtures are opt-in and use credentials supplied only in server env vars.
+  demoSeedStatus=await seedDemoUsersAndOrders();
  }
 }
 async function products():Promise<Product[]>{
@@ -72,6 +76,7 @@ app.get('/health',(req,res)=>res.json({
  ok:true,app:'KasiDrop API',mode:demo?'demo':'database',
  catalogue:demo?{source:'memory',templateProducts:seedProducts.length,notPersisted:true}:
  {source:'mongodb',...seedStatus},
+ ...(demo?{}:{demoData:demoSeedStatus}),
  timestamp:new Date().toISOString()
 }));
 app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID&&process.env.PAYFAST_MERCHANT_KEY&&process.env.PAYFAST_PASSPHRASE&&process.env.PAYFAST_MODE==='sandbox'),aiEnabled:Boolean(process.env.ANTHROPIC_API_KEY)}));
@@ -147,7 +152,7 @@ app.post('/api/payfast/notify',safe(async(req,res)=>{
  const actual=Buffer.from(fields.signature||'','utf8'),expected=Buffer.from(pfSignature(fields),'utf8');
  if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return res.sendStatus(400);
  const order=await getOrder(fields.m_payment_id||'');
- if(!order||fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID||!Number.isFinite(Number(fields.amount_gross))||Math.round(Number(fields.amount_gross)*100)!==Math.round(order.total*100))return res.sendStatus(400);
+ if(!order||order.demoSeed||fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID||!Number.isFinite(Number(fields.amount_gross))||Math.round(Number(fields.amount_gross)*100)!==Math.round(order.total*100))return res.sendStatus(400);
  // PayFast requires server confirmation. Do not trust the callback alone.
  const validation=new URLSearchParams(fields);const remote=await fetch('https://sandbox.payfast.co.za/eng/query/validate',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:validation.toString(),signal:AbortSignal.timeout(12000)});
  if(!remote.ok||(await remote.text()).trim()!=='VALID')return res.sendStatus(400);
@@ -161,7 +166,15 @@ app.post('/api/payfast/notify',safe(async(req,res)=>{
 }));
 app.get('/api/admin/summary',guard('admin'),safe(async(req,res)=>{
  const all=await products();const orders=demo?memOrders:await OrderModel.find().lean() as unknown as Order[];
- res.json({products:all.length,lowStock:all.filter(p=>p.stock<=5).length,orders:orders.length,revenue:orders.filter(o=>['paid','demo_paid'].includes(o.status)).reduce((a,o)=>a+o.total,0),recentOrders:orders.slice(-10).reverse()});
+ const revenueStatuses=['paid','processing','shipped','delivered'];
+ const isSimulation=(o:Order)=>Boolean(o.demoSeed)||o.status==='demo_paid';
+ res.json({
+  products:all.length,lowStock:all.filter(p=>p.stock<=5).length,orders:orders.length,
+  demoOrders:orders.filter(isSimulation).length,
+  revenue:orders.filter(o=>!isSimulation(o)&&revenueStatuses.includes(o.status)).reduce((a,o)=>a+o.total,0),
+  simulatedRevenue:orders.filter(o=>isSimulation(o)&&[...revenueStatuses,'demo_paid'].includes(o.status)).reduce((a,o)=>a+o.total,0),
+  recentOrders:[...orders].sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime()).slice(0,10)
+ });
 }));
 app.get('/api/admin/orders',guard('admin'),safe(async(req,res)=>{const orders=demo?memOrders:await OrderModel.find().sort({createdAt:-1}).lean();res.json({orders});}));
 app.patch('/api/admin/orders/:id',guard('admin'),safe(async(req,res)=>{
