@@ -40,7 +40,7 @@ PayFast checkout **reserves stock** when the order is created. A `FAILED`/`CANCE
 Chat uses Google Gemini (`GEMINI_API_KEY`, default `gemini-3.1-flash-lite`) when configured; otherwise uses a grounded catalogue fallback. Product search is lexical with South African contextual synonyms; vector embeddings are a later enhancement and **not yet implemented**.
 
 ## Deployment
-Render Node Web Service: \`npm install && npm run build\`, start \`npm start\`, health path \`/health\`. Region Frankfurt is preferred for SA audiences if available. Set \`CLIENT_URL\` to the actual Netlify site. Never expose keys in the UI.
+Render Node Web Service: \`npm ci && npm run build\`, start \`npm start\`, health path \`/health\`. Region Frankfurt is preferred for SA audiences if available. Set \`CLIENT_URL\` to the actual Netlify site. Never expose keys in the UI.
 
 See [UI repository](https://github.com/oboikanyego/kasi-drop-ui).
 
