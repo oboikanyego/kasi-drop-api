@@ -128,9 +128,9 @@ function paymentBase(o:Order){
  const api=process.env.PUBLIC_API_URL||'http://localhost:10000';
  return {merchant_id:merchantId,merchant_key:merchantKey,return_url:clientUrl+'/orders?payment=return',cancel_url:clientUrl+'/orders?payment=cancel',notify_url:api+'/api/payfast/notify',m_payment_id:o.id,amount:o.total.toFixed(2),item_name:'KasiDrop order '+o.id.slice(0,8)};
 }
-function encode(value:string){return encodeURIComponent(value.trim()).replace(/%20/g,'+');}
+function encode(value:string){return encodeURIComponent(value.trim()).replace(/[!'()*~]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase()).replace(/%20/g,'+');}
 function pfSignature(fields:Record<string,string>){
- const pairs=Object.entries(fields).filter(([k,v])=>k!=='signature'&&v!=='').map(([k,v])=>encode(k)+'='+encode(v));
+ const pairs:string[]=[];for(const [k,v] of Object.entries(fields)){if(k==='signature')break;if(v!=='')pairs.push(k+'='+encode(v));}
  pairs.push('passphrase='+encode(process.env.PAYFAST_PASSPHRASE||''));
  return createHash('md5').update(pairs.join('&')).digest('hex');
 }
