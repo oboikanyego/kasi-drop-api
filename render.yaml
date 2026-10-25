@@ -14,6 +14,8 @@ services:
         value: 'true'
       - key: CLIENT_URL
         value: https://kasi-drop.netlify.app
+      - key: MONGODB_URI
+        sync: false # Required only when DEMO_MODE=false
       - key: MONGODB_DB_NAME
         value: kasidrop
       - key: PUBLIC_API_URL
