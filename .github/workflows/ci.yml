@@ -18,3 +18,5 @@ jobs:
         run: npm audit --audit-level=high
       - run: npm run build
       - run: npm test
+      - name: Validate all catalogue photo URLs
+        run: npx tsx scripts/audit-catalogue-images.ts
