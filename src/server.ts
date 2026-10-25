@@ -619,15 +619,13 @@ app.post(
     }
     const data = paymentBase(order);
     const signature = pfSignature(data);
-    res
-      .status(201)
-      .json({
-        order,
-        payment: {
-          url: 'https://sandbox.payfast.co.za/eng/process',
-          fields: { ...data, signature },
-        },
-      });
+    res.status(201).json({
+      order,
+      payment: {
+        url: 'https://sandbox.payfast.co.za/eng/process',
+        fields: { ...data, signature },
+      },
+    });
   }),
 );
 app.get(
@@ -766,11 +764,9 @@ app.patch(
     if (!['paid', 'demo_paid', 'processing', 'shipped'].includes(order.status))
       return res.status(409).json({ error: 'Order is not paid or fulfilment has not started' });
     if (status === 'cancelled')
-      return res
-        .status(409)
-        .json({
-          error: 'Refund and cancellation must be handled through a verified payment workflow',
-        });
+      return res.status(409).json({
+        error: 'Refund and cancellation must be handled through a verified payment workflow',
+      });
     await updateOrder(order.id, { status });
     res.json({ ok: true, status });
   }),
