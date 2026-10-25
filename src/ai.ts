@@ -146,7 +146,7 @@ export async function shoppingAssistant(
   // accurate stock/prices in its prompt; its suggestions are validated server-side.
   const instruction =
     'You are KasiDrop shopping assistant. Use only these South African products, actual prices and stock. Reply JSON with reply (brief text), productIds (array of real product IDs), cartActions (array of {productId,quantity}). Only add cartActions when the shopper explicitly asks. Never invent products, prices or stock.';
-  const prompt = 'CATALOGUE: ' + JSON.stringify(snapshot) + '\\nSHOPPER REQUEST: ' + message;
+  const prompt = 'CATALOGUE: ' + JSON.stringify(snapshot) + '\nSHOPPER REQUEST: ' + message;
   let parsed: unknown;
   let provider = 'gemini';
   if (geminiConfigured()) {
