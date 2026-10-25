@@ -1,4 +1,4 @@
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
@@ -6,7 +6,21 @@ import { z } from 'zod';
 import { UserModel } from '../models.js';
 import { guard, identity, publicUser, token, users } from '../accounts.js';
 import { safe } from '../http.js';
-import { demo, memUsers, type User } from '../state.js';
+import { demo, memUsers, secureCookies, type User } from '../state.js';
+import { sessionCookieName, sessionCookieOptions, sessionMaxAgeMs } from '../session-cookie.js';
+
+/**
+ * Sign the browser in with an httpOnly session cookie. The token is still returned in the body
+ * for API clients and for UIs released before the cookie, which send it as a Bearer header.
+ */
+function startSession(res: Response, u: Pick<User, 'id' | 'email' | 'name' | 'role'>) {
+  const signed = token(u);
+  res.cookie(sessionCookieName, signed, {
+    ...sessionCookieOptions(secureCookies),
+    maxAge: sessionMaxAgeMs,
+  });
+  return signed;
+}
 
 const registration = z.object({
   name: z.string().min(2).max(80),
@@ -49,7 +63,7 @@ export function registerAuthRoutes(app: Express) {
         });
         u.id = String(saved._id);
       }
-      res.status(201).json({ user: publicUser(u), token: token(u) });
+      res.status(201).json({ user: publicUser(u), token: startSession(res, u) });
     }),
   );
   app.post(
@@ -60,9 +74,19 @@ export function registerAuthRoutes(app: Express) {
       const u = await users(email);
       if (!u || !(await bcrypt.compare(password, u.passwordHash)))
         return res.status(401).json({ error: 'Invalid email or password' });
-      res.json({ user: publicUser(u), token: token(u) });
+      res.json({ user: publicUser(u), token: startSession(res, u) });
     }),
   );
+  // Moves a session from a Bearer token (kept in browser storage by older UIs) into the cookie.
+  app.post('/api/auth/session', guard(), (req, res) => {
+    const u = identity(req)!;
+    startSession(res, { id: u.sub, email: u.email, name: u.name, role: u.role });
+    res.json({ user: { id: u.sub, name: u.name, email: u.email, role: u.role } });
+  });
+  app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie(sessionCookieName, sessionCookieOptions(secureCookies));
+    res.sendStatus(204);
+  });
   app.get('/api/auth/me', guard(), (req, res) => {
     const u = identity(req)!;
     res.json({ user: { id: u.sub, name: u.name, email: u.email, role: u.role } });

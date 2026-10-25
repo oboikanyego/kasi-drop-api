@@ -24,7 +24,13 @@ app.disable('x-powered-by');
 app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : false);
 const allowed = clientUrl.split(',').map((s) => s.trim());
 app.use(helmet());
-app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowed.includes(origin)) }));
+app.use(
+  cors({
+    origin: (origin, cb) => cb(null, !origin || allowed.includes(origin)),
+    // Lets an allowed UI origin calling the API directly (not through /api) send the session cookie.
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: '32kb' }));
 app.use(
   express.urlencoded({

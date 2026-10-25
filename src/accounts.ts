@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserModel } from './models.js';
 import { currentIdentity, type Identity, type Role } from './auth.js';
 import { demo, secret, memUsers, type User } from './state.js';
+import { missingCsrfHeader, sessionToken } from './session-cookie.js';
 
 export async function users(email: string): Promise<User | undefined> {
   if (demo) return memUsers.find((u) => u.email === email);
@@ -43,9 +44,13 @@ export function identity(req: Request): Identity | null {
   return identities.get(req) ?? null;
 }
 export const guard = (role?: Role) => (req: Request, res: Response, next: NextFunction) => {
+  const session = sessionToken(req);
+  if (!session) return res.status(401).json({ error: 'Sign in required' });
+  if (missingCsrfHeader(req, session.viaCookie))
+    return res.status(403).json({ error: 'Missing CSRF header' });
   let claims: unknown;
   try {
-    claims = jwt.verify((req.headers.authorization || '').replace(/^Bearer /i, ''), secret);
+    claims = jwt.verify(session.token, secret);
   } catch {
     return res.status(401).json({ error: 'Sign in required' });
   }
