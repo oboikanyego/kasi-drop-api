@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readSource } from './source.js';
-const server = readSource('src/server.ts');
+const server = readSource('src/routes/favorites.ts');
 const models = readSource('src/models.ts');
 test('favourites API requires authenticated identity for every operation', () => {
   for (const route of [
