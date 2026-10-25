@@ -3,7 +3,7 @@ import {searchCatalogue} from './catalogue.js';
 type Action={productId:string;quantity:number};
 const aiKey=()=>process.env.ANTHROPIC_API_KEY;
 async function claude(body:unknown){
- const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':aiKey()||'','anthropic-version':'2023-06-01'},body:JSON.stringify({model:process.env.ANTHROPIC_MODEL||'claude-sonnet-4-5',max_tokens:550,...body})});
+ const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':aiKey()||'','anthropic-version':'2023-06-01'},body:JSON.stringify({model:process.env.ANTHROPIC_MODEL||'claude-sonnet-4-5',max_tokens:550,...(body as Record<string,unknown>)})});
  if(!response.ok)throw Error('AI provider unavailable ('+response.status+')');
  return await response.json() as any;
 }
