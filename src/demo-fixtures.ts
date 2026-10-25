@@ -1,3 +1,4 @@
+import type { Order } from './order-rules.js';
 import { quote, seedProducts } from './catalogue.js';
 
 export const demoAccounts = [
@@ -92,7 +93,11 @@ export function demoSeedCredentials(env: Record<string, string | undefined>) {
 /** These are display-only training orders, not payments or real shipments.
  * Stable order IDs and immutable seeds allow repeatable runs without duplicates.
  */
-export function buildDemoOrder(fixture: DemoOrderFixture, userId: string, now: Date = new Date()) {
+export function buildDemoOrder(
+  fixture: DemoOrderFixture,
+  userId: string,
+  now: Date = new Date(),
+): Order {
   const user = demoAccounts.find(
     (account) => account.email === fixture.customerEmail && account.role === 'customer',
   );

@@ -19,6 +19,7 @@ import {
 } from './catalogue.js';
 import { catalogueFilter, catalogueSort, pagination } from './catalogue-query.js';
 import { payfastConfig, payfastConfigured } from './payfast-config.js';
+import type { Order } from './order-rules.js';
 import { ProductModel, UserModel, OrderModel } from './models.js';
 import { connectMongo } from './db.js';
 import { seedCatalogue, type CatalogueSeedSummary } from './seeding.js';
@@ -90,22 +91,6 @@ const aiLimiter = rateLimit({
   legacyHeaders: false,
 });
 type User = { id: string; name: string; email: string; passwordHash: string; role: Role };
-type Order = {
-  id: string;
-  userId: string;
-  email: string;
-  items: any[];
-  subtotal: number;
-  shipping: number;
-  total: number;
-  status: string;
-  paymentMethod: string;
-  stockReserved?: boolean;
-  demoSeed?: boolean;
-  delivery: any;
-  createdAt: Date;
-  paidAt?: Date;
-};
 const memProducts = seedProducts.map((p) => ({ ...p, tags: [...p.tags] }));
 let seedStatus: CatalogueSeedSummary | undefined;
 let demoSeedStatus: DemoSeedResult | undefined;
@@ -679,14 +664,13 @@ app.get(
   guard(),
   safe(async (req, res) => {
     const u = identity(req)!;
+    // Newest first: MongoDB sorts, and demo mode sorts its in-memory copy the same way.
     const orders = demo
-      ? memOrders.filter((o) => o.userId === u.sub)
+      ? memOrders
+          .filter((o) => o.userId === u.sub)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       : await OrderModel.find({ userId: u.sub }).sort({ createdAt: -1 }).lean();
-    res.json({
-      orders: [...orders].sort(
-        (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      ),
-    });
+    res.json({ orders });
   }),
 );
 app.get(

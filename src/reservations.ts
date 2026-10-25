@@ -1,3 +1,4 @@
+import type { OrderStatus } from './order-rules.js';
 /**
  * PayFast stock reservation rules. Stock is reserved when a PayFast order is created and
  * released if payment fails or the reservation expires. Kept pure so every transition is testable.
@@ -10,7 +11,7 @@ export type ReservableOrder = {
   createdAt: Date | string;
 };
 export type Transition = {
-  changes: { status: string; stockReserved: boolean; paidAt?: Date };
+  changes: { status: OrderStatus; stockReserved: boolean; paidAt?: Date };
   stock: StockChange;
 };
 export const reservationMinutes = () => {
