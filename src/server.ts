@@ -14,7 +14,7 @@ import {ProductModel,UserModel,OrderModel} from './models.js';
 import {connectMongo} from './db.js';
 import {seedCatalogue,type CatalogueSeedSummary} from './seeding.js';
 import {seedDemoUsersAndOrders,type DemoSeedResult} from './demo-seeding.js';
-import {shoppingAssistant,draftListing} from './ai.js';
+import {shoppingAssistant,draftListing,geminiConfigured,GeminiError} from './ai.js';
 import {registerProfileRoutes} from './profile-routes.js';
 
 const app=express();app.disable('x-powered-by');
@@ -96,7 +96,7 @@ app.get('/health',(req,res)=>res.json({
  ...(demo?{}:{demoData:demoSeedStatus}),
  timestamp:new Date().toISOString()
 }));
-app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID&&process.env.PAYFAST_MERCHANT_KEY&&process.env.PAYFAST_PASSPHRASE&&process.env.PAYFAST_MODE==='sandbox'),aiEnabled:Boolean(process.env.ANTHROPIC_API_KEY)}));
+app.get('/api/meta',(req,res)=>res.json({name:'KasiDrop',currency:'ZAR',categories,demoMode:demo,checkoutEnabled:demo||Boolean(process.env.PAYFAST_MERCHANT_ID&&process.env.PAYFAST_MERCHANT_KEY&&process.env.PAYFAST_PASSPHRASE&&process.env.PAYFAST_MODE==='sandbox'),aiEnabled:geminiConfigured()}));
 app.get('/api/products',safe(async(req,res)=>{
  const all=await products(),category=String(req.query.category||'All'),search=String(req.query.q||''),maxPrice=Number(req.query.maxPrice)||undefined;
  const filtered=searchCatalogue(all,search,category,maxPrice);
@@ -231,7 +231,7 @@ app.post('/api/ai/chat',aiLimiter,safe(async(req,res)=>{
 }));
 app.post('/api/admin/ai/listing',guard('admin'),aiLimiter,safe(async(req,res)=>{
  const info=z.object({name:z.string().min(2).max(100),notes:z.string().min(5).max(1000),category:z.string().max(60)}).parse(req.body);
- if(!process.env.ANTHROPIC_API_KEY)return res.status(503).json({error:'Set ANTHROPIC_API_KEY to enable AI listing generation'});
+ if(!geminiConfigured())return res.status(503).json({error:'Set GEMINI_API_KEY on the backend to enable AI listing generation'});
  res.json({draft:await draftListing(info)});
 }));
 registerProfileRoutes(app,guard(),identity,demo,id=>memUsers.find(user=>user.id===id));

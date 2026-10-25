@@ -28,3 +28,7 @@ services:
         sync: false # Secret only when SEED_DEMO_USERS=true
       - key: PUBLIC_API_URL
         value: https://kasi-drop-api.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false # Set manually in Render; never commit the secret
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
