@@ -19,6 +19,7 @@ import {groqConfigured} from './groq.js';
 import {registerProfileRoutes} from './profile-routes.js';
 import {HttpError,errorResponse} from './http-error.js';
 import {currentIdentity,type Identity,type Role} from './auth.js';
+import {paymentTransition,needsReview,reservationExpired,reservationMinutes,expiryTransition,type Transition} from './reservations.js';
 
 const app=express();app.disable('x-powered-by');
 // Render terminates TLS at its trusted reverse proxy.
@@ -48,7 +49,7 @@ const shopperLimiter=rateLimit({windowMs:15*60*1000,limit:240,standardHeaders:'d
 app.use('/api',(req,res,next)=>req.path==='/payfast/notify'?next():shopperLimiter(req,res,next));
 const aiLimiter=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
 type User={id:string;name:string;email:string;passwordHash:string;role:Role};
-type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;demoSeed?:boolean;delivery:any;createdAt:Date;paidAt?:Date};
+type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;stockReserved?:boolean;demoSeed?:boolean;delivery:any;createdAt:Date;paidAt?:Date};
 const memProducts=seedProducts.map(p=>({...p,tags:[...p.tags]}));
 let seedStatus:CatalogueSeedSummary|undefined;
 let demoSeedStatus:DemoSeedResult|undefined;
@@ -131,12 +132,54 @@ app.post('/api/auth/login',rateLimit({windowMs:15*60*1000,limit:30}),safe(async(
 app.get('/api/auth/me',guard(),(req,res)=>{const u=identity(req)!;res.json({user:{id:u.sub,name:u.name,email:u.email,role:u.role}});});
 async function getOrder(id:string):Promise<Order|undefined>{return demo?memOrders.find(o=>o.id===id):await OrderModel.findOne({id}).lean() as unknown as Order||undefined;}
 async function updateOrder(id:string,changes:Partial<Order>){if(demo){const o=memOrders.find(o=>o.id===id);if(o)Object.assign(o,changes);}else await OrderModel.updateOne({id},{$set:changes});}
+function adjustDemoStock(lines:Order['items'],change:'reserve'|'release'){
+ if(change==='reserve'){for(const l of lines){const p=memProducts.find(p=>p.id===l.productId);if(!p||p.stock<l.quantity)throw new HttpError(409,'Insufficient stock for '+l.name);}}
+ for(const l of lines){const p=memProducts.find(p=>p.id===l.productId);if(p)p.stock+=change==='reserve'?-l.quantity:l.quantity;}
+}
+async function adjustStock(lines:Order['items'],change:'reserve'|'release',session:mongoose.ClientSession){
+ for(const l of lines){
+  if(change==='release'){await ProductModel.updateOne({id:l.productId},{$inc:{stock:l.quantity}},{session});continue;}
+  const result=await ProductModel.updateOne({id:l.productId,active:true,stock:{$gte:l.quantity}},{$inc:{stock:-l.quantity}},{session});
+  if(result.modifiedCount!==1)throw new HttpError(409,'Insufficient stock for '+l.name);
+ }
+}
 async function decrementStock(lines:Order['items']){
- if(demo){for(const l of lines){const p=memProducts.find(p=>p.id===l.productId);if(!p||p.stock<l.quantity)throw new HttpError(409,'Insufficient stock for '+l.name);}for(const l of lines)memProducts.find(p=>p.id===l.productId)!.stock-=l.quantity;return;}
+ if(demo)return adjustDemoStock(lines,'reserve');
  // MongoDB multi-document transaction requires Atlas replica set; roll back fully on errors.
- const session=await mongoose.startSession();try{await session.withTransaction(async()=>{
-  for(const l of lines){const result=await ProductModel.updateOne({id:l.productId,active:true,stock:{$gte:l.quantity}},{$inc:{stock:-l.quantity}},{session});if(result.modifiedCount!==1)throw new HttpError(409,'Insufficient stock for '+l.name);}
- });}finally{await session.endSession();}
+ const session=await mongoose.startSession();try{await session.withTransaction(()=>adjustStock(lines,'reserve',session));}finally{await session.endSession();}
+}
+class TransitionConflict extends Error{}
+/**
+ * Apply an order transition and its stock change atomically, only if the order is still in the state
+ * it was read in. Returns false when another request changed it first; throws 409 when stock ran out.
+ */
+async function applyTransition(order:Order,t:Transition):Promise<boolean>{
+ if(demo){
+  // No awaits: the check and both writes happen in one tick.
+  const o=memOrders.find(o=>o.id===order.id);
+  if(!o||o.status!==order.status||Boolean(o.stockReserved)!==Boolean(order.stockReserved))return false;
+  if(t.stock!=='none')adjustDemoStock(o.items,t.stock);
+  Object.assign(o,t.changes);return true;
+ }
+ const session=await mongoose.startSession();
+ try{
+  await session.withTransaction(async()=>{
+   const result=await OrderModel.updateOne({id:order.id,status:order.status,stockReserved:order.stockReserved?true:{$ne:true}},{$set:t.changes},{session});
+   if(result.modifiedCount!==1)throw new TransitionConflict();
+   if(t.stock!=='none')await adjustStock(order.items,t.stock,session);
+  });
+  return true;
+ }catch(err){if(err instanceof TransitionConflict)return false;throw err;}
+ finally{await session.endSession();}
+}
+/** Return stock held by PayFast orders that were never paid. A late COMPLETE ITN re-takes stock if any is left. */
+async function expireReservations(){
+ const cutoff=new Date(Date.now()-reservationMinutes()*60_000);
+ const due=demo?memOrders.filter(o=>reservationExpired(o)):
+  await OrderModel.find({status:'pending_payment',paymentMethod:'payfast',stockReserved:true,createdAt:{$lte:cutoff}}).limit(100).lean() as unknown as Order[];
+ let expired=0;
+ for(const o of due)if(reservationExpired(o)&&await applyTransition(o,expiryTransition()))expired++;
+ if(expired)console.info('[reservations] released expired PayFast reservations',{orders:expired});
 }
 function paymentBase(o:Order){
  const merchantId=process.env.PAYFAST_MERCHANT_ID,merchantKey=process.env.PAYFAST_MERCHANT_KEY;
@@ -157,6 +200,12 @@ app.post('/api/orders/checkout',guard(),safe(async(req,res)=>{
   if(!process.env.PAYFAST_MERCHANT_ID||!process.env.PAYFAST_MERCHANT_KEY||!process.env.PAYFAST_PASSPHRASE||process.env.PAYFAST_MODE!=='sandbox')return res.status(503).json({error:'PayFast sandbox is not configured'});
  }
  if(demo)memOrders.push(order);else await OrderModel.create(order);
+ if(payload.paymentMethod==='payfast'){
+  // Hold stock while the shopper pays so two shoppers cannot both pay for the last item.
+  try{if(!await applyTransition(order,{changes:{status:'pending_payment',stockReserved:true},stock:'reserve'}))throw Error('Order changed during checkout');}
+  catch(e){await updateOrder(order.id,{status:'failed'});throw e;}
+  order.stockReserved=true;
+ }
  if(payload.paymentMethod==='demo'){
   try{await decrementStock(order.items);await updateOrder(order.id,{status:'demo_paid',paidAt:new Date()});order.status='demo_paid';}catch(e){await updateOrder(order.id,{status:'failed'});throw e;}
   return res.status(201).json({order,payment:null,warning:'Simulated payment only. No money was charged.'});
@@ -199,12 +248,16 @@ app.post('/api/payfast/notify',safe(async(req,res)=>{
  }catch(err){console.error('[payfast:itn] confirmation_unavailable',err instanceof Error?err.name:'network_error');return res.sendStatus(503);}
  if(!remote.ok)return reject('confirmation_http_'+remote.status);
  if((await remote.text()).trim()!=='VALID')return reject('confirmation_invalid');
- if(order.status!=='pending_payment')return res.sendStatus(200);
- if(fields.payment_status==='COMPLETE'){
-  try{await decrementStock(order.items);await updateOrder(order.id,{status:'paid',paidAt:new Date()});}
-  catch{await updateOrder(order.id,{status:'requires_review'});return reject('fulfilment_requires_review',500);}
- }else if(fields.payment_status==='FAILED'||fields.payment_status==='CANCELLED'){
-  await updateOrder(order.id,{status:'failed'});
+ const transition=paymentTransition(order,fields.payment_status||'');
+ if(!transition)return res.sendStatus(200);
+ try{
+  // A conflict means another ITN or the expiry sweep changed the order first; PayFast retries non-200s.
+  if(!await applyTransition(order,transition))return reject('order_changed_retry',503);
+ }catch(err){
+  if(!(err instanceof HttpError&&err.status===409))throw err;
+  // Paid after the reservation expired, and the stock has since sold.
+  if(!await applyTransition(order,needsReview()))return reject('order_changed_retry',503);
+  return reject('fulfilment_requires_review',500);
  }
  console.info('[payfast:itn] verified',{paymentStatus:fields.payment_status,orderUpdated:true});
  return res.sendStatus(200);
@@ -252,4 +305,7 @@ app.use((err:unknown,req:Request,res:Response,next:NextFunction)=>{
  const {status,body}=errorResponse(err);if(status>=500)console.error(err);return res.status(status).json(body);
 });
 const port=Number(process.env.PORT||10000);
-initialize().then(()=>app.listen(port,'0.0.0.0',()=>console.log('KasiDrop API on :'+port))).catch(err=>{console.error('Failed to start',err);process.exit(1)});
+initialize().then(()=>{
+ setInterval(()=>expireReservations().catch(err=>console.error('[reservations] expiry sweep failed',err)),60_000).unref();
+ app.listen(port,'0.0.0.0',()=>console.log('KasiDrop API on :'+port));
+}).catch(err=>{console.error('Failed to start',err);process.exit(1)});
