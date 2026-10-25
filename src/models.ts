@@ -16,7 +16,10 @@ export const ProductModel = model(
       active: Boolean,
     },
     { timestamps: true },
-  ),
+  )
+    // Catalogue listing filters on active/category/price and sorts by featured or price.
+    .index({ active: 1, category: 1, price: 1 })
+    .index({ active: 1, featured: -1 }),
 );
 const AddressSchema = new Schema(
   {
@@ -85,5 +88,9 @@ export const OrderModel = model(
       paidAt: Date,
     },
     { timestamps: true },
-  ),
+  )
+    // Shopper order history, newest-first admin lists, and the PayFast reservation sweep.
+    .index({ userId: 1, createdAt: -1 })
+    .index({ createdAt: -1 })
+    .index({ status: 1, createdAt: 1 }),
 );

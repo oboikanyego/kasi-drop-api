@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { payfastSignature, verifyPayfastItn } from './payfast-signature.js';
 import { z } from 'zod';
 import { categories, seedProducts, searchCatalogue, quote, type Product } from './catalogue.js';
+import { catalogueFilter, catalogueSort, pagination } from './catalogue-query.js';
 import { ProductModel, UserModel, OrderModel } from './models.js';
 import { connectMongo } from './db.js';
 import { seedCatalogue, type CatalogueSeedSummary } from './seeding.js';
@@ -132,8 +133,62 @@ async function initialize() {
     demoSeedStatus = await seedDemoUsersAndOrders();
   }
 }
-async function products(): Promise<Product[]> {
-  return demo ? memProducts : ((await ProductModel.find().lean()) as unknown as Product[]);
+const adminOrderLimit = 200;
+// Catalogue reads are filtered, sorted and limited in MongoDB rather than loading every product.
+type CatalogueQuery = { q: string; category: string; maxPrice?: number; sort: string };
+async function listProducts(query: CatalogueQuery, page: unknown, limit: unknown) {
+  const { pageSize, pageNumber, skip } = pagination(page, limit);
+  if (demo) {
+    const filtered = searchCatalogue(memProducts, query.q, query.category, query.maxPrice);
+    filtered.sort(
+      query.sort === 'price-asc'
+        ? (a, b) => a.price - b.price
+        : query.sort === 'price-desc'
+          ? (a, b) => b.price - a.price
+          : (a, b) => Number(b.featured) - Number(a.featured),
+    );
+    return {
+      products: filtered.slice(skip, skip + pageSize),
+      total: filtered.length,
+      pageNumber,
+      pageSize,
+    };
+  }
+  const filter = catalogueFilter(query.q, query.category, query.maxPrice);
+  const [found, total] = await Promise.all([
+    ProductModel.find(filter).sort(catalogueSort(query.sort)).skip(skip).limit(pageSize).lean(),
+    ProductModel.countDocuments(filter),
+  ]);
+  return { products: found as unknown as Product[], total, pageNumber, pageSize };
+}
+async function activeProduct(id: string): Promise<Product | undefined> {
+  if (demo) return memProducts.find((p) => p.id === id && p.active);
+  return (
+    ((await ProductModel.findOne({ id, active: true }).lean()) as unknown as Product) || undefined
+  );
+}
+async function similarProducts(p: Product): Promise<Product[]> {
+  const query = p.tags[0] || p.category;
+  const found = demo
+    ? searchCatalogue(memProducts, query)
+    : ((await ProductModel.find(catalogueFilter(query))
+        .sort({ _id: 1 })
+        .limit(5)
+        .lean()) as unknown as Product[]);
+  return found.filter((x) => x.id !== p.id).slice(0, 4);
+}
+/** Products with these ids, active or not; callers apply their own active checks. */
+async function productsById(ids: string[]): Promise<Product[]> {
+  if (demo) return memProducts.filter((p) => ids.includes(p.id));
+  return (await ProductModel.find({ id: { $in: ids } }).lean()) as unknown as Product[];
+}
+/** Bounded active catalogue for the AI assistant, which only reads the first 150 products anyway. */
+async function assistantCatalogue(): Promise<Product[]> {
+  if (demo) return memProducts;
+  return (await ProductModel.find({ active: true })
+    .sort({ _id: 1 })
+    .limit(150)
+    .lean()) as unknown as Product[];
 }
 async function users(email: string): Promise<User | undefined> {
   if (demo) return memUsers.find((u) => u.email === email);
@@ -267,33 +322,30 @@ app.get('/api/meta', (req, res) =>
 app.get(
   '/api/products',
   safe(async (req, res) => {
-    const all = await products(),
-      category = String(req.query.category || 'All'),
-      search = String(req.query.q || ''),
-      maxPrice = Number(req.query.maxPrice) || undefined;
-    const filtered = searchCatalogue(all, search, category, maxPrice);
-    const sort = String(req.query.sort || 'featured');
-    filtered.sort(
-      sort === 'price-asc'
-        ? (a, b) => a.price - b.price
-        : sort === 'price-desc'
-          ? (a, b) => b.price - a.price
-          : (a, b) => Number(b.featured) - Number(a.featured),
+    const result = await listProducts(
+      {
+        q: String(req.query.q || ''),
+        category: String(req.query.category || 'All'),
+        maxPrice: Number(req.query.maxPrice) || undefined,
+        sort: String(req.query.sort || 'featured'),
+      },
+      req.query.page,
+      req.query.limit,
     );
-    res.json({ products: filtered, total: filtered.length });
+    res.json({
+      products: result.products,
+      total: result.total,
+      page: result.pageNumber,
+      pageSize: result.pageSize,
+    });
   }),
 );
 app.get(
   '/api/products/:id',
   safe(async (req, res) => {
-    const p = (await products()).find((p) => p.id === req.params.id && p.active);
+    const p = await activeProduct(req.params.id);
     if (!p) return res.status(404).json({ error: 'Not found' });
-    res.json({
-      product: p,
-      similar: searchCatalogue(await products(), p.tags[0] || p.category)
-        .filter((x) => x.id !== p.id)
-        .slice(0, 4),
-    });
+    res.json({ product: p, similar: await similarProducts(p) });
   }),
 );
 app.post(
@@ -378,8 +430,7 @@ app.put(
   guard(),
   safe(async (req, res) => {
     const id = favoriteIdSchema.parse(req.params.productId);
-    if (!(await products()).some((p) => p.id === id && p.active))
-      throw new HttpError(404, 'Product not found');
+    if (!(await activeProduct(id))) throw new HttpError(404, 'Product not found');
     res.json({ productIds: await setFavorite(identity(req)!.sub, id, true) });
   }),
 );
@@ -396,7 +447,7 @@ app.post(
   guard(),
   safe(async (req, res) => {
     const ids = [...new Set(favoritesMergeSchema.parse(req.body).productIds)];
-    const available = new Set((await products()).filter((p) => p.active).map((p) => p.id));
+    const available = new Set((await productsById(ids)).filter((p) => p.active).map((p) => p.id));
     const valid = ids.filter((id) => available.has(id));
     const userId = identity(req)!.sub;
     if (demo) {
@@ -565,7 +616,10 @@ app.post(
     const payload = checkoutSchema.parse(req.body);
     if (!demo && payload.paymentMethod === 'demo')
       return res.status(400).json({ error: 'Demo checkout is unavailable in persistent mode' });
-    const pricing = quote(await products(), payload.items);
+    const pricing = quote(
+      await productsById(payload.items.map((item) => item.productId)),
+      payload.items,
+    );
     const order: Order = {
       id: randomUUID(),
       userId: u.sub,
@@ -723,24 +777,59 @@ app.get(
   '/api/admin/summary',
   guard('admin'),
   safe(async (req, res) => {
-    const all = await products();
-    const orders = demo ? memOrders : ((await OrderModel.find().lean()) as unknown as Order[]);
     const revenueStatuses = ['paid', 'processing', 'shipped', 'delivered'];
-    const isSimulation = (o: Order) => Boolean(o.demoSeed) || o.status === 'demo_paid';
+    if (demo) {
+      const isSimulation = (o: Order) => Boolean(o.demoSeed) || o.status === 'demo_paid';
+      return res.json({
+        products: memProducts.length,
+        lowStock: memProducts.filter((p) => p.stock <= 5).length,
+        orders: memOrders.length,
+        demoOrders: memOrders.filter(isSimulation).length,
+        revenue: memOrders
+          .filter((o) => !isSimulation(o) && revenueStatuses.includes(o.status))
+          .reduce((a, o) => a + o.total, 0),
+        simulatedRevenue: memOrders
+          .filter((o) => isSimulation(o) && [...revenueStatuses, 'demo_paid'].includes(o.status))
+          .reduce((a, o) => a + o.total, 0),
+        recentOrders: [...memOrders]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 10),
+      });
+    }
+    // Same figures as the demo branch, computed in MongoDB instead of loading every order.
+    const simulation = { $or: [{ demoSeed: true }, { status: 'demo_paid' }] };
+    const sumTotals = async (match: Record<string, unknown>) =>
+      (
+        await OrderModel.aggregate<{ total: number }>([
+          { $match: match },
+          { $group: { _id: null, total: { $sum: '$total' } } },
+        ])
+      )[0]?.total ?? 0;
+    const [
+      productCount,
+      lowStock,
+      orderCount,
+      demoOrders,
+      revenue,
+      simulatedRevenue,
+      recentOrders,
+    ] = await Promise.all([
+      ProductModel.countDocuments(),
+      ProductModel.countDocuments({ stock: { $lte: 5 } }),
+      OrderModel.countDocuments(),
+      OrderModel.countDocuments(simulation),
+      sumTotals({ demoSeed: { $ne: true }, status: { $in: revenueStatuses } }),
+      sumTotals({ ...simulation, status: { $in: [...revenueStatuses, 'demo_paid'] } }),
+      OrderModel.find().sort({ createdAt: -1 }).limit(10).lean(),
+    ]);
     res.json({
-      products: all.length,
-      lowStock: all.filter((p) => p.stock <= 5).length,
-      orders: orders.length,
-      demoOrders: orders.filter(isSimulation).length,
-      revenue: orders
-        .filter((o) => !isSimulation(o) && revenueStatuses.includes(o.status))
-        .reduce((a, o) => a + o.total, 0),
-      simulatedRevenue: orders
-        .filter((o) => isSimulation(o) && [...revenueStatuses, 'demo_paid'].includes(o.status))
-        .reduce((a, o) => a + o.total, 0),
-      recentOrders: [...orders]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 10),
+      products: productCount,
+      lowStock,
+      orders: orderCount,
+      demoOrders,
+      revenue,
+      simulatedRevenue,
+      recentOrders,
     });
   }),
 );
@@ -748,7 +837,12 @@ app.get(
   '/api/admin/orders',
   guard('admin'),
   safe(async (req, res) => {
-    const orders = demo ? memOrders : await OrderModel.find().sort({ createdAt: -1 }).lean();
+    // Newest first, bounded so the admin page never loads the whole order history.
+    const orders = demo
+      ? [...memOrders]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, adminOrderLimit)
+      : await OrderModel.find().sort({ createdAt: -1 }).limit(adminOrderLimit).lean();
     res.json({ orders });
   }),
 );
@@ -807,7 +901,7 @@ app.post(
   aiLimiter,
   safe(async (req, res) => {
     const message = z.string().min(2).max(400).parse(req.body.message);
-    const result = await shoppingAssistant(message, await products());
+    const result = await shoppingAssistant(message, await assistantCatalogue());
     res.json(result);
   }),
 );

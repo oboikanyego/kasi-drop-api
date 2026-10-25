@@ -331,14 +331,18 @@ const expansions: Record<string, string[]> = {
   drink: ['tea', 'rooibos', 'mug'],
   local: ['handmade', 'craft', 'shweshwe'],
 };
+/** Lower-cased query words plus their South African contextual synonyms. */
+export function searchTerms(query: string) {
+  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  return words.flatMap((w) => [w, ...(expansions[w] || [])]);
+}
 export function searchCatalogue(
   products: Product[],
   query = '',
   category = 'All',
   maxPrice?: number,
 ) {
-  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  const terms = words.flatMap((w) => [w, ...(expansions[w] || [])]);
+  const terms = searchTerms(query);
   return products.filter(
     (p) =>
       p.active &&
