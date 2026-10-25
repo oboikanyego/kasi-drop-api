@@ -16,3 +16,25 @@ test('invalid product prices are rejected by quote',()=>{
  const products=seedProducts.map(p=>p.id==='rooibos-tea'?{...p,price:129.999}:p);
  assert.throws(()=>quote(products,[{productId:'rooibos-tea',quantity:1}]),/Invalid monetary/);
 });
+
+test('retail demo catalogue has twelve distinct shop-style SKUs with valid fields',()=>{
+ const mocked=seedProducts.filter(p=>p.id.startsWith('mock-'));
+ assert.equal(mocked.length,12);
+ assert.equal(new Set(seedProducts.map(p=>p.id)).size,seedProducts.length);
+ for(const item of mocked){
+  assert.equal(item.active,true);
+  assert.ok(item.stock>0);
+  assert.ok(item.price>0&&Number.isInteger(item.price*100));
+  assert.ok(item.image.startsWith('https://images.unsplash.com/photo-'));
+  assert.ok(item.description.includes('Mock')||item.description.includes('mock'));
+  assert.ok(item.tags.length>=3);
+ }
+});
+test('retail demo SKUs can be searched and quoted independently',()=>{
+ const rooibos=seedProducts.find(p=>p.id==='mock-rooibos-40');
+ assert.ok(rooibos);
+ assert.ok(searchCatalogue(seedProducts,'rooibos').some(p=>p.id===rooibos.id));
+ const q=quote(seedProducts,[{productId:rooibos.id,quantity:2}]);
+ assert.equal(q.subtotal,99.98);
+ assert.equal(q.total,178.98);
+});
