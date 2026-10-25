@@ -6,7 +6,8 @@ import {rateLimit} from 'express-rate-limit';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import {randomUUID,createHash,timingSafeEqual} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
+import {payfastSignature,verifyPayfastItn} from './payfast-signature.js';
 import {z} from 'zod';
 import {categories,seedProducts,searchCatalogue,quote,type Product} from './catalogue.js';
 import {ProductModel,UserModel,OrderModel} from './models.js';
@@ -25,7 +26,11 @@ if(!secret)throw Error('JWT_SECRET must be set in persistent mode');
 const clientUrl=process.env.CLIENT_URL||'http://localhost:4200';
 const allowed=clientUrl.split(',').map(s=>s.trim());
 app.use(helmet());app.use(cors({origin:(origin,cb)=>cb(null,!origin||allowed.includes(origin))}));
-app.use(express.json({limit:'32kb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
+const payfastItnRaw=new WeakMap<object,string>();
+app.use(express.json({limit:'32kb'}));
+app.use(express.urlencoded({extended:false,limit:'16kb',verify:(req,_res,body)=>{
+ if(req.originalUrl.split('?')[0]==='/api/payfast/notify')payfastItnRaw.set(req,body.toString('utf8'));
+}}));
 // PayFast ITNs must not share shopper request throttling.
 // Log only metadata/status; never log signatures or payment payloads.
 app.use('/api/payfast/notify',(req,res,next)=>{
@@ -128,11 +133,8 @@ function paymentBase(o:Order){
  const api=process.env.PUBLIC_API_URL||'http://localhost:10000';
  return {merchant_id:merchantId,merchant_key:merchantKey,return_url:clientUrl+'/orders?payment=return',cancel_url:clientUrl+'/orders?payment=cancel',notify_url:api+'/api/payfast/notify',m_payment_id:o.id,amount:o.total.toFixed(2),item_name:'KasiDrop order '+o.id.slice(0,8)};
 }
-function encode(value:string){return encodeURIComponent(value.trim()).replace(/[!'()*~]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase()).replace(/%20/g,'+');}
 function pfSignature(fields:Record<string,string>){
- const pairs:string[]=[];for(const [k,v] of Object.entries(fields)){if(k==='signature')break;if(v!=='')pairs.push(k+'='+encode(v));}
- pairs.push('passphrase='+encode(process.env.PAYFAST_PASSPHRASE||''));
- return createHash('md5').update(pairs.join('&')).digest('hex');
+ return payfastSignature(fields,process.env.PAYFAST_PASSPHRASE||'');
 }
 app.post('/api/orders/checkout',guard(),safe(async(req,res)=>{
  const u=identity(req)!;const payload=checkoutSchema.parse(req.body);
@@ -167,8 +169,9 @@ app.post('/api/payfast/notify',safe(async(req,res)=>{
  if(!req.body||typeof req.body!=='object'||Array.isArray(req.body))return reject('missing_or_unsupported_body');
  const fields:Record<string,string>=Object.fromEntries(Object.entries(req.body).map(([k,v])=>[k,String(v)]));
  if(!/^[a-f0-9]{32}$/i.test(fields.signature||''))return reject('missing_or_malformed_signature');
- const actual=Buffer.from(fields.signature.toLowerCase(),'utf8'),expected=Buffer.from(pfSignature(fields),'utf8');
- if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return reject('signature_mismatch');
+ const rawItn=payfastItnRaw.get(req);
+ if(!rawItn)return reject('missing_raw_itn_body');
+ if(!verifyPayfastItn(rawItn,process.env.PAYFAST_PASSPHRASE||''))return reject('signature_mismatch');
  const order=await getOrder(fields.m_payment_id||'');
  if(!order||order.demoSeed)return reject('order_not_found_or_test_fixture');
  if(fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID)return reject('merchant_mismatch');
