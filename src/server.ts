@@ -26,7 +26,18 @@ const clientUrl=process.env.CLIENT_URL||'http://localhost:4200';
 const allowed=clientUrl.split(',').map(s=>s.trim());
 app.use(helmet());app.use(cors({origin:(origin,cb)=>cb(null,!origin||allowed.includes(origin))}));
 app.use(express.json({limit:'32kb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
-app.use('/api',rateLimit({windowMs:15*60*1000,limit:240,standardHeaders:'draft-7',legacyHeaders:false}));
+// PayFast ITNs must not share shopper request throttling.
+// Log only metadata/status; never log signatures or payment payloads.
+app.use('/api/payfast/notify',(req,res,next)=>{
+ const start=Date.now();
+ res.on('finish',()=>console.info('[payfast:itn] request',{
+  method:req.method,status:res.statusCode,contentType:req.headers['content-type']||'missing',
+  durationMs:Date.now()-start
+ }));
+ next();
+});
+const shopperLimiter=rateLimit({windowMs:15*60*1000,limit:240,standardHeaders:'draft-7',legacyHeaders:false});
+app.use('/api',(req,res,next)=>req.path==='/payfast/notify'?next():shopperLimiter(req,res,next));
 const aiLimiter=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
 type Role='admin'|'customer';type User={id:string;name:string;email:string;passwordHash:string;role:Role};
 type Order={id:string;userId:string;email:string;items:any[];subtotal:number;shipping:number;total:number;status:string;paymentMethod:string;demoSeed?:boolean;delivery:any;createdAt:Date;paidAt?:Date};
@@ -148,22 +159,40 @@ app.get('/api/orders/:id',guard(),safe(async(req,res)=>{
  res.json({order});
 }));
 app.post('/api/payfast/notify',safe(async(req,res)=>{
- if(process.env.PAYFAST_MODE!=='sandbox'||!process.env.PAYFAST_PASSPHRASE)return res.sendStatus(403);
- const fields:Record<string,string>=Object.fromEntries(Object.entries(req.body||{}).map(([k,v])=>[k,String(v)]));
- const actual=Buffer.from(fields.signature||'','utf8'),expected=Buffer.from(pfSignature(fields),'utf8');
- if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return res.sendStatus(400);
+ const reject=(reason:string,status=400)=>{
+  console.warn('[payfast:itn] rejected',reason);
+  return res.sendStatus(status);
+ };
+ if(process.env.PAYFAST_MODE!=='sandbox'||!process.env.PAYFAST_PASSPHRASE)return reject('sandbox_configuration',403);
+ if(!req.body||typeof req.body!=='object'||Array.isArray(req.body))return reject('missing_or_unsupported_body');
+ const fields:Record<string,string>=Object.fromEntries(Object.entries(req.body).map(([k,v])=>[k,String(v)]));
+ if(!/^[a-f0-9]{32}$/i.test(fields.signature||''))return reject('missing_or_malformed_signature');
+ const actual=Buffer.from(fields.signature.toLowerCase(),'utf8'),expected=Buffer.from(pfSignature(fields),'utf8');
+ if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return reject('signature_mismatch');
  const order=await getOrder(fields.m_payment_id||'');
- if(!order||order.demoSeed||fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID||!Number.isFinite(Number(fields.amount_gross))||Math.round(Number(fields.amount_gross)*100)!==Math.round(order.total*100))return res.sendStatus(400);
- // PayFast requires server confirmation. Do not trust the callback alone.
- const validation=new URLSearchParams(fields);const remote=await fetch('https://sandbox.payfast.co.za/eng/query/validate',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:validation.toString(),signal:AbortSignal.timeout(12000)});
- if(!remote.ok||(await remote.text()).trim()!=='VALID')return res.sendStatus(400);
+ if(!order||order.demoSeed)return reject('order_not_found_or_test_fixture');
+ if(fields.merchant_id!==process.env.PAYFAST_MERCHANT_ID)return reject('merchant_mismatch');
+ if(!Number.isFinite(Number(fields.amount_gross))||Math.round(Number(fields.amount_gross)*100)!==Math.round(order.total*100))return reject('amount_mismatch');
+ // Do not mark orders paid unless the transaction is independently confirmed.
+ const validation=new URLSearchParams(fields);
+ let remote:globalThis.Response;
+ try{
+  remote=await fetch('https://sandbox.payfast.co.za/eng/query/validate',{
+   method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
+   body:validation.toString(),signal:AbortSignal.timeout(12000)
+  });
+ }catch(err){console.error('[payfast:itn] confirmation_unavailable',err instanceof Error?err.name:'network_error');return res.sendStatus(503);}
+ if(!remote.ok)return reject('confirmation_http_'+remote.status);
+ if((await remote.text()).trim()!=='VALID')return reject('confirmation_invalid');
  if(order.status!=='pending_payment')return res.sendStatus(200);
  if(fields.payment_status==='COMPLETE'){
-  // In production use a durable payment event / idempotency ledger and retry queue.
   try{await decrementStock(order.items);await updateOrder(order.id,{status:'paid',paidAt:new Date()});}
-  catch {await updateOrder(order.id,{status:'requires_review'});return res.sendStatus(500);}
- }else if(fields.payment_status==='FAILED'||fields.payment_status==='CANCELLED')await updateOrder(order.id,{status:'failed'});
- res.sendStatus(200);
+  catch{await updateOrder(order.id,{status:'requires_review'});return reject('fulfilment_requires_review',500);}
+ }else if(fields.payment_status==='FAILED'||fields.payment_status==='CANCELLED'){
+  await updateOrder(order.id,{status:'failed'});
+ }
+ console.info('[payfast:itn] verified',{paymentStatus:fields.payment_status,orderUpdated:true});
+ return res.sendStatus(200);
 }));
 app.get('/api/admin/summary',guard('admin'),safe(async(req,res)=>{
  const all=await products();const orders=demo?memOrders:await OrderModel.find().lean() as unknown as Order[];
