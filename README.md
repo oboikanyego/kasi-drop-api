@@ -33,7 +33,9 @@ Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
 ## Mode and payment boundaries
 The starter Render blueprint enables **DEMO_MODE=true**. Data is ephemeral and payments are simulated when checkout uses \`paymentMethod=demo\`. **No real payment happens, and no actual order fulfilment should occur in demo mode.** Never store real customer details in public demo mode.
 
-For persistent deployment set \`DEMO_MODE=false\`, \`MONGODB_URI\`, a strong \`JWT_SECRET\`, and provision a trusted admin via \`SEED_ADMIN_EMAIL\` / \`SEED_ADMIN_PASSWORD\` with \`npm run seed\` (do not commit secrets). Then configure PayFast sandbox keys and \`PUBLIC_API_URL\`. Only sandbox PayFast is enabled. Actual payments, refunds, ITN failure recovery, security review, stock reservations and live-mode gateway verification need further hardening **before production commerce**.
+For persistent deployment set \`DEMO_MODE=false\`, \`MONGODB_URI\`, a strong \`JWT_SECRET\`, and provision a trusted admin via \`SEED_ADMIN_EMAIL\` / \`SEED_ADMIN_PASSWORD\` with \`npm run seed\` (do not commit secrets). Then configure PayFast sandbox keys and \`PUBLIC_API_URL\`. Only sandbox PayFast is enabled. Actual payments, refunds, ITN failure recovery, security review and live-mode gateway verification need further hardening **before production commerce**.
+
+PayFast checkout **reserves stock** when the order is created. A `FAILED`/`CANCELLED` ITN releases it, and unpaid orders release it after `PAYFAST_RESERVATION_MINUTES` (default 30) with status `expired`. If a `COMPLETE` ITN arrives after expiry, stock is taken again, or the order becomes `requires_review` if it has sold out.
 
 Chat uses Google Gemini (`GEMINI_API_KEY`, default `gemini-3.1-flash-lite`) when configured; otherwise uses a grounded catalogue fallback. Product search is lexical with South African contextual synonyms; vector embeddings are a later enhancement and **not yet implemented**.
 
