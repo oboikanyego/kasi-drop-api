@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { orderStatuses, paymentMethods } from './order-rules.js';
 const { Schema, model } = mongoose;
 export const ProductModel = model(
   'KasiProduct',
@@ -72,8 +73,8 @@ export const OrderModel = model(
       subtotal: Number,
       shipping: Number,
       total: Number,
-      status: String,
-      paymentMethod: String,
+      status: { type: String, enum: orderStatuses, required: true },
+      paymentMethod: { type: String, enum: paymentMethods, required: true },
       stockReserved: { type: Boolean, default: false },
       demoSeed: { type: Boolean, default: false },
       delivery: {

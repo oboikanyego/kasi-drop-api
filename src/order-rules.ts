@@ -1,4 +1,53 @@
 /** Pure business rules: safe for unit tests and shared across API handlers. */
+/** Every status an order can be stored with; the OrderModel schema enforces the same list. */
+export const orderStatuses = [
+  'pending_payment',
+  'paid',
+  'demo_paid',
+  'failed',
+  'expired',
+  'requires_review',
+  'processing',
+  'shipped',
+  'delivered',
+  'cancelled',
+] as const;
+export type OrderStatus = (typeof orderStatuses)[number];
+// demo_seed marks database-seeded sample orders (see demo-fixtures.ts).
+export const paymentMethods = ['demo', 'payfast', 'demo_seed'] as const;
+export type PaymentMethod = (typeof paymentMethods)[number];
+/** A priced cart line as quote() produces it and an order stores it. */
+export type OrderLine = {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+};
+export type DeliveryDetails = {
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  province: string;
+  postalCode: string;
+};
+export type Order = {
+  id: string;
+  userId: string;
+  email: string;
+  items: OrderLine[];
+  subtotal: number;
+  shipping: number;
+  total: number;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  stockReserved?: boolean;
+  demoSeed?: boolean;
+  delivery: DeliveryDetails;
+  createdAt: Date;
+  paidAt?: Date;
+};
 export const orderTransitions: Readonly<Record<string, readonly string[]>> = {
   paid: ['processing'],
   demo_paid: ['processing'],
