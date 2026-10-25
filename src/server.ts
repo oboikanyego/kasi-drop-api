@@ -14,6 +14,7 @@ import {connectMongo} from './db.js';
 import {seedCatalogue,type CatalogueSeedSummary} from './seeding.js';
 import {seedDemoUsersAndOrders,type DemoSeedResult} from './demo-seeding.js';
 import {shoppingAssistant,draftListing} from './ai.js';
+import {registerProfileRoutes} from './profile-routes.js';
 
 const app=express();app.disable('x-powered-by');
 // Render terminates TLS at its trusted reverse proxy.
@@ -201,6 +202,7 @@ app.post('/api/admin/ai/listing',guard('admin'),aiLimiter,safe(async(req,res)=>{
  if(!process.env.ANTHROPIC_API_KEY)return res.status(503).json({error:'Set ANTHROPIC_API_KEY to enable AI listing generation'});
  res.json({draft:await draftListing(info)});
 }));
+registerProfileRoutes(app,guard(),identity,demo,id=>memUsers.find(user=>user.id===id));
 app.use((err:unknown,req:Request,res:Response,next:NextFunction)=>{
  if(err instanceof z.ZodError)return res.status(400).json({error:'Validation failed',details:err.flatten()});
  console.error(err);return res.status(500).json({error:err instanceof Error&&['Insufficient stock','Cart must','Invalid quantity','Duplicate product'].some(t=>err.message.startsWith(t))?err.message:'Request could not be completed'});
