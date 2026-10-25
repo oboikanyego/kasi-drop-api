@@ -29,7 +29,7 @@ app.use(helmet());app.use(cors({origin:(origin,cb)=>cb(null,!origin||allowed.inc
 const payfastItnRaw=new WeakMap<object,string>();
 app.use(express.json({limit:'32kb'}));
 app.use(express.urlencoded({extended:false,limit:'16kb',verify:(req,_res,body)=>{
- if(req.originalUrl.split('?')[0]==='/api/payfast/notify')payfastItnRaw.set(req,body.toString('utf8'));
+ if(req.url?.split('?')[0]==='/api/payfast/notify')payfastItnRaw.set(req,body.toString('utf8'));
 }}));
 // PayFast ITNs must not share shopper request throttling.
 // Log only metadata/status; never log signatures or payment payloads.
