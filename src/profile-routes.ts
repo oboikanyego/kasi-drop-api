@@ -21,7 +21,6 @@ import {
 } from './profile-rules.js';
 
 type Identity = { sub: string; email: string; name: string; role: 'admin' | 'customer' };
-type DemoUser = Identity & { id: string };
 type ProfileData = {
   id: string;
   name: string;
@@ -80,6 +79,9 @@ export function registerProfileRoutes(
     if (!validId(id)) return null;
     return UserModel.findById(id);
   }
+  // Typing u exposes stored profiles with missing fields that pass through as-is; fixing that
+  // changes API output, so it is left loose for now.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const format = (u: any, id?: string): ProfileData => ({
     id: id || String(u._id),
     name: u.name,
@@ -92,6 +94,7 @@ export function registerProfileRoutes(
     memberSince: u.memberSince || (u.createdAt ? new Date(u.createdAt).toISOString() : null),
     avatarUpdatedAt: u.avatarUpdatedAt ? new Date(u.avatarUpdatedAt).toISOString() : null,
     addresses: normalizeAddressDefaults(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (u.addresses || []).map((a: any) => ({
         id: a.id,
         label: a.label,

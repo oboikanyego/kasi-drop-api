@@ -23,7 +23,7 @@ test('Groq endpoint sends configured model and private bearer key', async () => 
   }
 });
 
-import { shoppingAssistant, draftListing } from '../src/ai.js';
+import { shoppingAssistant } from '../src/ai.js';
 import { seedProducts } from '../src/catalogue.js';
 test('Gemini 503 routes to Groq and validates catalogue references', async () => {
   const beforeG = process.env.GEMINI_API_KEY,
