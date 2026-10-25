@@ -1,3 +1,4 @@
+import { attemptTimeout } from './deadline.js';
 export const groqConfigured = () => Boolean(process.env.GROQ_API_KEY?.trim());
 export const groqModel = () => process.env.GROQ_MODEL?.trim() || 'llama-3.3-70b-versatile';
 export class GroqError extends Error {
@@ -9,9 +10,12 @@ export async function groqJson(
   system: string,
   user: string,
   fetcher: typeof fetch = fetch,
+  deadline = Infinity,
 ): Promise<unknown> {
   const key = process.env.GROQ_API_KEY?.trim();
   if (!key) throw new GroqError(503);
+  const timeout = attemptTimeout(9000, deadline);
+  if (timeout === null) throw new GroqError(504);
   const response = await fetcher('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
@@ -25,7 +29,7 @@ export async function groqJson(
       temperature: 0.2,
       max_tokens: 650,
     }),
-    signal: AbortSignal.timeout(9000),
+    signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) throw new GroqError(response.status);
   const payload = (await response.json()) as {
