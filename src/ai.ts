@@ -5,12 +5,12 @@ type Action={productId:string;quantity:number};
 type Part={text?:string;functionCall?:{name:string;args?:Record<string,unknown>;id?:string};functionResponse?:{name:string;response:unknown;id?:string}};
 type Content={role:'user'|'model';parts:Part[]};
 type GeminiResponse={candidates?:Array<{content?:{parts?:Part[]}}>};
-const model=()=>process.env.GEMINI_MODEL||'gemini-2.5-flash-lite';
+const model=()=>process.env.GEMINI_MODEL||'gemini-3.1-flash-lite';
 export const geminiConfigured=()=>Boolean(process.env.GEMINI_API_KEY?.trim());
 
 export class GeminiError extends Error {
  constructor(public status:number){
-  super(status===429?'Gemini free-tier quota reached':status===401||status===403?'Gemini API key was rejected':'Gemini provider unavailable');
+  super(status===429?'Gemini free-tier quota reached':status===401||status===403?'Gemini API key was rejected':status===404?'Gemini model not available for this API key: check GEMINI_MODEL':'Gemini provider unavailable');
  }
 }
 export async function generateGemini(body:Record<string,unknown>,fetcher:typeof fetch=fetch):Promise<GeminiResponse>{

@@ -13,7 +13,7 @@ test('Gemini request sets x-goog-api-key and free-tier model without disclosing 
  process.env.GEMINI_API_KEY='test-secret';delete process.env.GEMINI_MODEL;
  try{
   const result=await generateGemini({contents:[{role:'user',parts:[{text:'hi'}]}]},async(input,init)=>{
-   assert.match(String(input),/gemini-2\.5-flash-lite:generateContent/);
+   assert.match(String(input),/gemini-3\.1-flash-lite:generateContent/);
    assert.ok(!String(input).includes('test-secret'));
    assert.equal((init?.headers as Record<string,string>)['x-goog-api-key'],'test-secret');
    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:'hello'}]}}]}),{status:200});
@@ -30,4 +30,14 @@ test('listing generator fails with meaningful configuration error when key absen
  const original=process.env.GEMINI_API_KEY;delete process.env.GEMINI_API_KEY;
  try{assert.equal(geminiConfigured(),false);await assert.rejects(()=>draftListing({name:'Example',notes:'Local',category:'Crafts'}),/GEMINI_API_KEY/);}
  finally{if(original===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=original;}
+});
+
+test('a restricted Gemini model returns a clear 404 diagnostic',async()=>{
+ const oldKey=process.env.GEMINI_API_KEY,oldModel=process.env.GEMINI_MODEL;
+ process.env.GEMINI_API_KEY='test-secret';process.env.GEMINI_MODEL='gemini-2.5-flash-lite';
+ try{await assert.rejects(()=>generateGemini({contents:[]},async()=>new Response('{}',{status:404})),(err:unknown)=>err instanceof GeminiError&&err.status===404&&/model not available/.test(err.message));}
+ finally{
+  if(oldKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=oldKey;
+  if(oldModel===undefined)delete process.env.GEMINI_MODEL;else process.env.GEMINI_MODEL=oldModel;
+ }
 });
