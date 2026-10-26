@@ -66,6 +66,14 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
+export async function recordApiError(): Promise<void> {
+  const data = { name: 'api_error', createdAt: new Date() };
+  if (demo) {
+    demoEvents.push(data);
+    if (demoEvents.length > 10000) demoEvents.shift();
+  } else await EventModel.create(data);
+}
+
 export function registerInsightsRoutes(app: Express) {
   app.post(
     '/api/analytics/events',
