@@ -17,9 +17,11 @@ import { registerOrderRoutes } from './routes/orders.js';
 import { payfastItnRaw, registerPayfastRoutes } from './routes/payfast.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
+import { registerHealthRoutes } from './health.js';
 
 const app = express();
 app.disable('x-powered-by');
+registerHealthRoutes(app);
 // Render terminates TLS at its trusted reverse proxy.
 app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : false);
 const allowed = clientUrl.split(',').map((s) => s.trim());
