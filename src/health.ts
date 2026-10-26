@@ -14,12 +14,16 @@ export function registerHealthRoutes(app: Express) {
 
   // Readiness: reflects the current MongoDB driver connection state in persistent mode.
   app.get('/api/health', (_req, res) => {
-    const status = readinessStatus(process.env.DEMO_MODE === 'true', mongoose.connection.readyState);
+    const status = readinessStatus(
+      process.env.DEMO_MODE === 'true',
+      mongoose.connection.readyState,
+    );
     res.setHeader('Cache-Control', 'no-store');
     res.status(status).json({
       status: status === 200 ? 'ready' : 'not_ready',
       service: 'kasi-drop-api',
-      database: process.env.DEMO_MODE === 'true' ? 'demo' : status === 200 ? 'connected' : 'disconnected',
+      database:
+        process.env.DEMO_MODE === 'true' ? 'demo' : status === 200 ? 'connected' : 'disconnected',
     });
   });
 }
