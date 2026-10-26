@@ -155,16 +155,16 @@ The apply path inserts missing retail products without replacing existing produc
 
 The original `npm run seed` remains insert-only and does not reactivate retired entries. This refresh never runs automatically on deployment; it must be explicitly applied to the database connected to the correct Render service. Refresh the storefront after the operation to see the latest active listings.
 
-
 ## Analytics and early-tester feedback
 
 Public, rate-limited routes:
+
 - `POST /api/analytics/events` with `{"name":"page_view","page":"shop"}`; permitted names are `page_view`, `product_search`, `ai_chat`, `add_to_cart`, `checkout_started`, `checkout_created`, `api_error`. Only a broad, fixed page label may be attached; **do not transmit search text, AI messages, personal information, or full URLs**.
 - `POST /api/feedback` with `{"category":"experience","rating":4,"message":"Your feedback here"}`; 10–1500 characters; optional 1–5 rating.
 
 Admin-authenticated reporting:
+
 - `GET /api/admin/analytics`: counts over the last 30 days and checkout-creation/start ratio. **Page views are not unique visitors**, checkout creation is **not a completed payment**, and the rate is not a user-level conversion rate.
 - `GET /api/admin/feedback`: latest 100 feedback submissions (handle as potentially sensitive untrusted content).
 
 Analytics events automatically expire after 90 days in persistent MongoDB mode, with an in-memory bounded fallback for demo mode. Free-text feedback is retained until deliberately deleted; establish a retention policy before broad public launch. All metrics are informational, not certified financial reports. The application records HTTP 5xx counts without request bodies, addresses, or IPs.
-
