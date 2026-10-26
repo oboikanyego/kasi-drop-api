@@ -18,7 +18,7 @@ import { payfastItnRaw, registerPayfastRoutes } from './routes/payfast.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
 import { registerHealthRoutes } from './health.js';
-import { registerInsightsRoutes } from './insights.js';
+import { registerInsightsRoutes, recordApiError } from './insights.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -68,6 +68,11 @@ const shopperLimiter = rateLimit({
 app.use('/api', (req, res, next) =>
   req.path === '/payfast/notify' ? next() : shopperLimiter(req, res, next),
 );
+/* Count real 5xx responses without storing URLs, payloads, IPs or user identities. */
+app.use('/api', (_req, res, next) => {
+  res.on('finish', () => { if (res.statusCode >= 500) void recordApiError().catch(() => {}); });
+  next();
+});
 registerCatalogueRoutes(app);
 registerAuthRoutes(app);
 registerFavoriteRoutes(app);
