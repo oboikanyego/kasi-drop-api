@@ -16,12 +16,35 @@ npm run build
 npm test
 \`\`\`
 
-Health: \`GET /health\`. Catalogue: \`GET /api/products\`.
+Health: `GET /health` (liveness), `GET /api/health` (readiness). Catalogue: `GET /api/products`.
 
 **Demo accounts** (ephemeral demo mode ONLY, do not use with real customers):
 
 - \`shopper@kasidrop.test\` / \`Demo@12345\`
 - \`admin@kasidrop.test\` / \`Demo@12345\`
+
+## Health checks and Render monitoring (October 2026)
+
+- `GET /health`: public **liveness** probe, always returns HTTP 200 with `status: "ok"`, `service`, and `uptime` while Express is serving requests. It deliberately does not depend on MongoDB.
+- `GET /api/health`: public **readiness** probe; returns HTTP 200 with `status: "ready"` in demo mode or when Mongoose is connected (`readyState === 1`). In persistent mode, it returns HTTP 503 with `status: "not_ready"` if MongoDB is disconnected. Includes `service` and `database` (`demo`, `connected`, or `disconnected`).
+- Both responses include `Cache-Control: no-store`. They intentionally omit sensitive environment values and database connection strings.
+- `render.yaml` specifies `healthCheckPath: /health`. **Existing Render services may not automatically inherit blueprint changes**; inspect the service's Settings → Health Check Path and set `/health` there.
+- Run `npm test` for automated checks, `npm run lint` and `npm run build` before deploying. The Render service must be active to verify public URLs.
+
+## Account favourites
+
+Authenticated customers' favourites are stored as `favoriteProductIds` on their MongoDB user documents. All favourites routes require authentication:
+
+- `GET /api/favorites`
+- `PUT /api/favorites/:productId`
+- `DELETE /api/favorites/:productId`
+- `POST /api/favorites/merge` with `{ "productIds": ["product-id"] }`
+
+The frontend loads account favourites on sign-in, merges any locally saved guest selections, and isolates accounts. **Guest-only** favourites use browser localStorage; demo-mode server data is temporary and resets on restart.
+
+## Formatting
+
+Run `npm run format` to apply pinned Prettier formatting or `npm run format:check` to verify it.
 
 ## Core routes
 
@@ -63,7 +86,7 @@ The API includes **12 curated sample South African products** (categories: Food 
 
 With `DEMO_MODE=true` the same products exist **in memory only**. Every Render restart resets accounts, stock and order history. Nothing is written to Atlas.
 
-To persist sample products to MongoDB Atlas, configure the real `MONGODB_URI` and `MONGODB_DB_NAME=kasidrop` plus a strong `JWT_SECRET` in Render; set `DEMO_MODE=false`. On successful MongoDB connection, the API **automatically upserts only missing products**, then starts serving them. Each product uses a stable `id` and a unique index. Subsequent startups **preserve edited names, prices, images, inventory and availability**. Partial seeds are repaired without deleting any records. The startup log and `GET /health` report the seed totals.
+To persist sample products to MongoDB Atlas, configure the real `MONGODB_URI` and `MONGODB_DB_NAME=kasidrop` plus a strong `JWT_SECRET` in Render; set `DEMO_MODE=false`. On successful MongoDB connection, the API **automatically upserts only missing products**, then starts serving them. Each product uses a stable `id` and a unique index. Subsequent startups **preserve edited names, prices, images, inventory and availability**. Partial seeds are repaired without deleting any records. The startup log reports seed totals; `/health` reports liveness only.
 
 A manual alternative (after configuring MongoDB env vars): `npm run seed`. This CLI always connects to MongoDB, even if `DEMO_MODE=true`, and uses the same insert-only behaviour. An admin is optionally created _once_ when `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` are both configured for the CLI. Do not expose these values in Git, enable shared demo admin credentials, or seed actual customer information.
 
@@ -71,7 +94,7 @@ A manual alternative (after configuring MongoDB env vars): `npm run seed`. This 
 
 ### Confirm Atlas content
 
-Once configured, check `/health` for `mode:"database"` and non-zero `catalogue.activeProducts`. The collections are `kasiproducts`, `kasiusers`, `kasiorders` in the selected `kasidrop` database. You can verify `kasiproducts` counts directly in Atlas Data Explorer. Avoid treating public demo records as real customer data.
+Once configured, check `/api/health` for `status:"ready"` and `database:"connected"`. Query `/api/products` and Atlas to verify catalogue totals. The collections are `kasiproducts`, `kasiusers`, `kasiorders` in the selected `kasidrop` database. You can verify `kasiproducts` counts directly in Atlas Data Explorer. Avoid treating public demo records as real customer data.
 
 ## Optional database-backed demo accounts and orders
 
@@ -93,7 +116,7 @@ The five illustrative orders use fixed IDs `KDTEST01-ORDER` through `KDTEST05-OR
 
 On app startup in database mode, `seedDemoUsersAndOrders()` inserts missing demo users and orders. It never overwrites existing passwords, user roles or orders, never charges a customer, and never subtracts product stock. It stops rather than taking over a conflicting non-demo account or order. Run `npm run seed` manually for the same idempotent behaviour.
 
-The health endpoint reports demo account and order counts. Admin statistics exclude simulated payments from **real revenue** while reporting `simulatedRevenue` and `demoOrders` separately. The customer/admin orders API includes the `demoSeed` marker for prominent test labels. Once the initial seed has succeeded, change `SEED_DEMO_USERS=false` to stop future automatic demo account creation. This does not delete existing records; remove only specifically marked demo data deliberately, never by wiping live collections.
+Startup logs describe demo seeding; the health endpoints do not report demo account or order counts. Admin statistics exclude simulated payments from **real revenue** while reporting `simulatedRevenue` and `demoOrders` separately. The customer/admin orders API includes the `demoSeed` marker for prominent test labels. Once the initial seed has succeeded, change `SEED_DEMO_USERS=false` to stop future automatic demo account creation. This does not delete existing records; remove only specifically marked demo data deliberately, never by wiping live collections.
 
 **Security:** Never publish demo admin credentials, use a common publicly known password, expose seed secrets to the frontend or include them in Git. Remove demo accounts before opening admin access to real users. If the public storefront remains online, do not advertise these accounts on its login page.
 
