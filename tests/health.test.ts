@@ -20,13 +20,15 @@ test('both endpoints are registered and liveness responds without MongoDB', asyn
     const response = await fetch('http://127.0.0.1:' + address.port + '/health');
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
-    const body = await response.json() as { status: string; service: string; uptime: number };
+    const body = (await response.json()) as { status: string; service: string; uptime: number };
     assert.equal(body.status, 'ok');
     assert.equal(body.service, 'kasi-drop-api');
     assert.equal(typeof body.uptime, 'number');
     const readiness = await fetch('http://127.0.0.1:' + address.port + '/api/health');
     assert.equal(readiness.status, readinessStatus(process.env.DEMO_MODE === 'true', 0));
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 });
