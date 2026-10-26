@@ -18,6 +18,7 @@ import { payfastItnRaw, registerPayfastRoutes } from './routes/payfast.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
 import { registerHealthRoutes } from './health.js';
+import { registerInsightsRoutes } from './insights.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -74,6 +75,7 @@ registerOrderRoutes(app);
 registerPayfastRoutes(app);
 registerAdminRoutes(app);
 registerAiRoutes(app);
+registerInsightsRoutes(app);
 registerProfileRoutes(app, guard(), identity, demo, (id) =>
   memUsers.find((user) => user.id === id),
 );
