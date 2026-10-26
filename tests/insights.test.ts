@@ -5,8 +5,16 @@ import { readSource } from './source.js';
 const source = readSource('src/insights.ts');
 const server = readSource('src/server.ts');
 test('analytics accepts only explicit event names and non-sensitive page groups', () => {
-  for (const name of ['page_view','product_search','ai_chat','add_to_cart','checkout_started','checkout_created','api_error']) {
-    assert.ok(source.includes("'"+name+"'"), name);
+  for (const name of [
+    'page_view',
+    'product_search',
+    'ai_chat',
+    'add_to_cart',
+    'checkout_started',
+    'checkout_created',
+    'api_error',
+  ]) {
+    assert.ok(source.includes("'" + name + "'"), name);
   }
   assert.match(source, /z\.object\(/);
   assert.doesNotMatch(source, /ipAddress:|userId:|prompt:|query:/);

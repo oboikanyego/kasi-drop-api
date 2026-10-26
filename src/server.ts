@@ -70,7 +70,9 @@ app.use('/api', (req, res, next) =>
 );
 /* Count real 5xx responses without storing URLs, payloads, IPs or user identities. */
 app.use('/api', (_req, res, next) => {
-  res.on('finish', () => { if (res.statusCode >= 500) void recordApiError().catch(() => {}); });
+  res.on('finish', () => {
+    if (res.statusCode >= 500) void recordApiError().catch(() => {});
+  });
   next();
 });
 registerCatalogueRoutes(app);
