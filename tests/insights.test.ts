@@ -21,12 +21,12 @@ test('analytics accepts only explicit event names and non-sensitive page groups'
 });
 test('feedback has limits, rate limiting and safe admin access', () => {
   assert.match(source, /min\(10\)\.max\(1500\)/);
-  assert.match(source, /limit: 30/);
+  assert.match(source, /limit:30/);
   assert.match(source, /guard\('admin'\)/);
   assert.match(source, /limit\(100\)/);
 });
 test('analytics expires and API error counts avoid sensitive payloads', () => {
-  assert.match(source, /expires: 60 \* 60 \* 24 \* 90/);
+  assert.match(source, /expires:60\*60\*24\*90/);
   assert.match(server, /recordApiError/);
-  assert.match(server, /res\.statusCode >= 500/);
+  assert.match(server, /res\.statusCode>=500/);
 });
