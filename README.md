@@ -57,6 +57,10 @@ Run `npm run format` to apply pinned Prettier formatting or `npm run format:chec
 - \`POST /api/orders/checkout\`, \`GET /api/orders\`, \`GET /api/orders/:id\`
 - \`GET /api/admin/summary\`, \`GET /api/admin/orders\`, \`PATCH /api/admin/orders/:id\`
 - \`POST /api/admin/products\`, \`PATCH /api/admin/products/:id\`
+- \`POST /api/admin/images\` (admin: upload a product photo), \`GET /api/images/:id\` (public)
+
+**Product photos:** an admin uploads a PNG, JPEG or WebP (up to 1 MB, checked by its actual bytes, never SVG) to \`POST /api/admin/images\` as the raw request body and gets back \`{ "url": "/api/images/<id>" }\`. That path is what a product's \`image\` field stores; an http(s) link is still accepted too, and a path to an upload that does not exist is refused. The bytes are stored in MongoDB (in memory in demo mode), because Render's disk is wiped on every restart. \`GET /api/images/:id\` is public and cached for a year, since a photo never changes. Photo downloads have their own rate limit (1200 per 15 minutes) instead of the shopper one, because each photo is a separate request.
+
 - \`POST /api/ai/chat\`, \`POST /api/admin/ai/listing\`
 - \`POST /api/payfast/notify\`
 

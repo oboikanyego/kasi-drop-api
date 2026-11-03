@@ -22,6 +22,19 @@ export const ProductModel = model(
     .index({ active: 1, category: 1, price: 1 })
     .index({ active: 1, featured: -1 }),
 );
+// Product photos uploaded by admins. The bytes live in MongoDB because Render's disk is wiped on
+// every restart; the content never changes, so a photo is cached forever under its own id.
+export const ImageModel = model(
+  'KasiImage',
+  new Schema(
+    {
+      id: { type: String, unique: true, required: true },
+      mime: { type: String, enum: ['image/png', 'image/jpeg', 'image/webp'], required: true },
+      data: { type: Buffer, required: true },
+    },
+    { timestamps: true },
+  ),
+);
 const AddressSchema = new Schema(
   {
     id: { type: String, required: true },

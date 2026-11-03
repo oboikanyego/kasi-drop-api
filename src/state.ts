@@ -15,3 +15,4 @@ export const memProducts = seedProducts.map((p) => ({ ...p, tags: [...p.tags] })
 export const memUsers: User[] = [];
 export const memOrders: Order[] = [];
 export const demoFavorites = new Map<string, string[]>();
+export const memImages = new Map<string, { mime: string; bytes: Buffer }>();

@@ -6,6 +6,9 @@ import { OrderModel, ProductModel } from '../models.js';
 import { guard } from '../accounts.js';
 import { adminOrderLimit } from '../catalogue-store.js';
 import { getOrder, updateOrder } from '../order-store.js';
+import { HttpError } from '../http-error.js';
+import { imageExists } from '../image-store.js';
+import { isImageReference, uploadedImageId } from '../image-rules.js';
 import { safe } from '../http.js';
 import { demo, memOrders, memProducts } from '../state.js';
 
@@ -15,11 +18,19 @@ const productSchema = z.object({
   category: z.string().min(2),
   price: z.number().positive().max(100000),
   stock: z.number().int().min(0),
-  image: z.string().url().max(500),
+  image: z
+    .string()
+    .max(500)
+    .refine(isImageReference, 'Use an uploaded photo or an http(s) image link'),
   tags: z.array(z.string().max(30)).max(10).default([]),
   featured: z.boolean().default(false),
   active: z.boolean().default(true),
 });
+/** A product may only point at an uploaded photo that exists, so listings never show a broken image. */
+async function assertImageExists(image: string | undefined) {
+  const id = image === undefined ? null : uploadedImageId(image);
+  if (id && !(await imageExists(id))) throw new HttpError(400, 'That uploaded photo was not found');
+}
 export function registerAdminRoutes(app: Express) {
   app.get(
     '/api/admin/summary',
@@ -118,6 +129,7 @@ export function registerAdminRoutes(app: Express) {
     guard('admin'),
     safe(async (req, res) => {
       const input = productSchema.parse(req.body);
+      await assertImageExists(input.image);
       const p = { ...input, id: randomUUID() };
       if (demo) memProducts.unshift(p);
       else await ProductModel.create(p);
@@ -129,6 +141,7 @@ export function registerAdminRoutes(app: Express) {
     guard('admin'),
     safe(async (req, res) => {
       const change = productSchema.partial().parse(req.body);
+      await assertImageExists(change.image);
       if (demo) {
         const p = memProducts.find((p) => p.id === req.params.id);
         if (!p) return res.sendStatus(404);
