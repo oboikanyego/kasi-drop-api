@@ -6,6 +6,7 @@ import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { registerProfileRoutes } from './profile-routes.js';
 import { errorResponse } from './http-error.js';
+import { skipsShopperLimit } from './http.js';
 import { guard, identity } from './accounts.js';
 import { clientUrl, demo, memUsers } from './state.js';
 import { initialize } from './startup.js';
@@ -17,6 +18,7 @@ import { registerOrderRoutes } from './routes/orders.js';
 import { payfastItnRaw, registerPayfastRoutes } from './routes/payfast.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
+import { registerImageRoutes } from './routes/images.js';
 import { registerHealthRoutes } from './health.js';
 import { registerInsightsRoutes, recordApiError } from './insights.js';
 
@@ -66,7 +68,7 @@ const shopperLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api', (req, res, next) =>
-  req.path === '/payfast/notify' ? next() : shopperLimiter(req, res, next),
+  skipsShopperLimit(req.method, req.path) ? next() : shopperLimiter(req, res, next),
 );
 /* Count real 5xx responses without storing URLs, payloads, IPs or user identities. */
 app.use('/api', (_req, res, next) => {
@@ -82,6 +84,7 @@ registerOrderRoutes(app);
 registerPayfastRoutes(app);
 registerAdminRoutes(app);
 registerAiRoutes(app);
+registerImageRoutes(app);
 registerInsightsRoutes(app);
 registerProfileRoutes(app, guard(), identity, demo, (id) =>
   memUsers.find((user) => user.id === id),
