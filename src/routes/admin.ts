@@ -32,6 +32,22 @@ async function assertImageExists(image: string | undefined) {
   if (id && !(await imageExists(id))) throw new HttpError(400, 'That uploaded photo was not found');
 }
 export function registerAdminRoutes(app: Express) {
+  // Include inactive products: the public catalogue intentionally excludes them.
+  app.get(
+    '/api/admin/products',
+    guard('admin'),
+    safe(async (req, res) => {
+      const page = Math.max(1, Math.min(10000, Number.parseInt(String(req.query.page || '1'), 10) || 1));
+      const limit = 100;
+      const products = demo
+        ? memProducts.slice((page - 1) * limit, page * limit)
+        : await ProductModel.find().sort({ _id: 1 }).skip((page - 1) * limit).limit(limit).lean();
+      const total = demo ? memProducts.length : await ProductModel.countDocuments();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ products, total, page, pageSize: limit });
+    }),
+  );
+
   app.get(
     '/api/admin/summary',
     guard('admin'),
