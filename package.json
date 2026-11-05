@@ -11,6 +11,7 @@
     "test": "tsx --test tests/*.test.ts",
     "seed": "tsx src/seed.ts",
     "refresh:catalogue": "tsx src/refresh-demo-catalogue.ts",
+    "migrate:images:r2": "tsx src/migrate-images-r2.ts",
     "format": "npx --yes prettier@3.6.2 --write .",
     "format:check": "npx --yes prettier@3.6.2 --check ."
   },
