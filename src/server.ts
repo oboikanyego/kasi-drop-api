@@ -87,7 +87,9 @@ registerAdminRoutes(app);
 registerAiRoutes(app);
 registerImageRoutes(app);
 registerInsightsRoutes(app);
-app.get('/api/admin/deployment-readiness', guard('admin'), (_req, res) => res.json(deploymentReadiness()));
+app.get('/api/admin/deployment-readiness', guard('admin'), (_req, res) =>
+  res.json(deploymentReadiness()),
+);
 registerProfileRoutes(app, guard(), identity, demo, (id) =>
   memUsers.find((user) => user.id === id),
 );

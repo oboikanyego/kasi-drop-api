@@ -13,15 +13,32 @@ async function main() {
   if (!r2Config()) throw Error('Configure all R2 environment variables before migrating.');
   const apply = process.env.CONFIRM_R2_IMAGE_MIGRATION === 'YES';
   await connectMongo();
-  let scanned = 0, copied = 0, alreadyStored = 0;
+  let scanned = 0,
+    copied = 0,
+    alreadyStored = 0;
   for await (const image of ImageModel.find().cursor()) {
     scanned++;
     if (!apply) continue; // No R2 network calls or writes during a dry run.
-    if (await r2Exists(image.id)) { alreadyStored++; continue; }
+    if (await r2Exists(image.id)) {
+      alreadyStored++;
+      continue;
+    }
     await r2Write(image.id, image.data, image.mime);
     copied++;
   }
-  console.log(JSON.stringify({ dryRun: !apply, scanned, copied, alreadyStored, sourceRecordsPreserved: true }));
+  console.log(
+    JSON.stringify({
+      dryRun: !apply,
+      scanned,
+      copied,
+      alreadyStored,
+      sourceRecordsPreserved: true,
+    }),
+  );
 }
-main().catch(err => { console.error('R2 migration failed:', err instanceof Error ? err.message : 'unknown'); process.exitCode = 1; })
+main()
+  .catch((err) => {
+    console.error('R2 migration failed:', err instanceof Error ? err.message : 'unknown');
+    process.exitCode = 1;
+  })
   .finally(() => mongoose.disconnect());

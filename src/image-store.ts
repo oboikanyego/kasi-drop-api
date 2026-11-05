@@ -22,6 +22,6 @@ export async function getImage(id: string): Promise<{ mime: string; bytes: Buffe
 }
 export async function imageExists(id: string): Promise<boolean> {
   if (demo) return memImages.has(id);
-  if (r2Config() && await r2Exists(id)) return true;
+  if (r2Config() && (await r2Exists(id))) return true;
   return Boolean(await ImageModel.exists({ id }));
 }

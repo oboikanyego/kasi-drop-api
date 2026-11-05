@@ -18,10 +18,21 @@ export const eventNames = [
   'api_error',
   'product_view',
 ] as const;
-export const clientEventNames = ['page_view','product_search','ai_chat','add_to_cart','checkout_started','checkout_created','product_view'] as const;
+export const clientEventNames = [
+  'page_view',
+  'product_search',
+  'ai_chat',
+  'add_to_cart',
+  'checkout_started',
+  'checkout_created',
+  'product_view',
+] as const;
 const eventSchema = z.object({
   name: z.enum(clientEventNames),
-  productId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/).optional(),
+  productId: z
+    .string()
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/)
+    .optional(),
   // Never accept raw search queries, prompts, addresses, user IDs or full URLs.
   page: z
     .enum([
@@ -60,12 +71,19 @@ const FeedbackModel = model(
     category: String,
     rating: Number,
     message: String,
-    status: { type: String, enum: ['new','in_review','resolved','closed'], default: 'new' },
+    status: { type: String, enum: ['new', 'in_review', 'resolved', 'closed'], default: 'new' },
     createdAt: { type: Date, default: Date.now },
   }),
 );
 const demoEvents: Array<{ name: string; page?: string; productId?: string; createdAt: Date }> = [];
-const demoFeedback: Array<{ id: string; category: string; rating?: number; message: string; status: string; createdAt: Date }> = [];
+const demoFeedback: Array<{
+  id: string;
+  category: string;
+  rating?: number;
+  message: string;
+  status: string;
+  createdAt: Date;
+}> = [];
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
@@ -87,7 +105,8 @@ export function registerInsightsRoutes(app: Express) {
     limiter,
     safe(async (req, res) => {
       const data = eventSchema.parse(req.body);
-      if (data.productId && !['product_view', 'add_to_cart'].includes(data.name)) return res.status(400).json({ error: 'Invalid event metadata' });
+      if (data.productId && !['product_view', 'add_to_cart'].includes(data.name))
+        return res.status(400).json({ error: 'Invalid event metadata' });
       if (demo) {
         demoEvents.push({ ...data, createdAt: new Date() });
         if (demoEvents.length > 10000) demoEvents.shift();
@@ -122,8 +141,22 @@ export function registerInsightsRoutes(app: Express) {
             { $group: { _id: '$name', count: { $sum: 1 } } },
             { $project: { _id: 0, name: '$_id', count: 1 } },
           ]);
-      const checkoutOrders = demo ? 0 : await OrderModel.countDocuments({ demoSeed: { $ne: true }, paymentMethod: 'payfast', createdAt: { $gte: since } });
-      const confirmedPayments = demo ? 0 : await OrderModel.countDocuments({ demoSeed: { $ne: true }, paymentMethod: 'payfast', createdAt: { $gte: since }, status: { $in: ['paid','processing','shipped','delivered'] }, paidAt: { $exists: true, $ne: null } });
+      const checkoutOrders = demo
+        ? 0
+        : await OrderModel.countDocuments({
+            demoSeed: { $ne: true },
+            paymentMethod: 'payfast',
+            createdAt: { $gte: since },
+          });
+      const confirmedPayments = demo
+        ? 0
+        : await OrderModel.countDocuments({
+            demoSeed: { $ne: true },
+            paymentMethod: 'payfast',
+            createdAt: { $gte: since },
+            status: { $in: ['paid', 'processing', 'shipped', 'delivered'] },
+            paidAt: { $exists: true, $ne: null },
+          });
       const counts = Object.fromEntries(
         eventNames.map((name) => [name, grouped.find((x) => x.name === name)?.count ?? 0]),
       );
@@ -132,7 +165,9 @@ export function registerInsightsRoutes(app: Express) {
         counts,
         checkoutOrders,
         confirmedPayments,
-        paymentConversion: checkoutOrders ? Number((confirmedPayments / checkoutOrders * 100).toFixed(1)) : 0,
+        paymentConversion: checkoutOrders
+          ? Number(((confirmedPayments / checkoutOrders) * 100).toFixed(1))
+          : 0,
         checkoutConversion: counts.checkout_started
           ? Number(((counts.checkout_created / counts.checkout_started) * 100).toFixed(1))
           : 0,
@@ -140,20 +175,27 @@ export function registerInsightsRoutes(app: Express) {
       });
     }),
   );
-  app.patch('/api/admin/feedback/:id', guard('admin'), safe(async (req, res) => {
-    const status = z.enum(['new','in_review','resolved','closed']).parse(req.body?.status);
-    const id = z.string().regex(/^(?:[0-9a-f]{24}|[0-9a-f-]{36})$/i).parse(req.params.id);
-    if (demo) {
-      const item = demoFeedback.find(x => x.id === id);
+  app.patch(
+    '/api/admin/feedback/:id',
+    guard('admin'),
+    safe(async (req, res) => {
+      const status = z.enum(['new', 'in_review', 'resolved', 'closed']).parse(req.body?.status);
+      const id = z
+        .string()
+        .regex(/^(?:[0-9a-f]{24}|[0-9a-f-]{36})$/i)
+        .parse(req.params.id);
+      if (demo) {
+        const item = demoFeedback.find((x) => x.id === id);
+        if (!item) return res.status(404).json({ error: 'Feedback not found' });
+        item.status = status;
+        return res.json({ id, status });
+      }
+      const query = /^[0-9a-f]{24}$/i.test(id) ? { _id: id } : { id };
+      const item = await FeedbackModel.findOneAndUpdate(query, { $set: { status } }, { new: true });
       if (!item) return res.status(404).json({ error: 'Feedback not found' });
-      item.status = status;
-      return res.json({ id, status });
-    }
-    const query = /^[0-9a-f]{24}$/i.test(id) ? { _id: id } : { id };
-    const item = await FeedbackModel.findOneAndUpdate(query, { $set: { status } }, { new: true });
-    if (!item) return res.status(404).json({ error: 'Feedback not found' });
-    res.json({ id, status });
-  }));
+      res.json({ id, status });
+    }),
+  );
   app.get(
     '/api/admin/feedback',
     guard('admin'),
@@ -165,7 +207,13 @@ export function registerInsightsRoutes(app: Express) {
             .limit(100)
             .select('id category rating message status createdAt')
             .lean();
-      res.json({ feedback: items.map((item) => ({ ...item, id: (item as {id?: string}).id || String((item as {_id?: unknown})._id ?? ''), status: (item as {status?: string}).status || 'new' })) });
+      res.json({
+        feedback: items.map((item) => ({
+          ...item,
+          id: (item as { id?: string }).id || String((item as { _id?: unknown })._id ?? ''),
+          status: (item as { status?: string }).status || 'new',
+        })),
+      });
     }),
   );
 }
@@ -177,14 +225,32 @@ export async function popularProductIds(limit = 30): Promise<string[]> {
     const weights = new Map<string, number>();
     for (const item of demoEvents) {
       if (!item.productId || item.createdAt < since) continue;
-      weights.set(item.productId, (weights.get(item.productId) ?? 0) + (item.name === 'add_to_cart' ? 4 : 1));
+      weights.set(
+        item.productId,
+        (weights.get(item.productId) ?? 0) + (item.name === 'add_to_cart' ? 4 : 1),
+      );
     }
-    return [...weights].sort((a,b) => b[1] - a[1]).slice(0,limit).map(x=>x[0]);
+    return [...weights]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map((x) => x[0]);
   }
   const rows = await EventModel.aggregate<{ _id: string; score: number }>([
-    { $match: { createdAt: { $gte: since }, name: { $in: ['product_view','add_to_cart'] }, productId: { $type: 'string' } } },
-    { $group: { _id: '$productId', score: { $sum: { $cond: [{ $eq: ['$name','add_to_cart'] }, 4, 1] } } } },
-    { $sort: { score: -1 } }, { $limit: limit },
+    {
+      $match: {
+        createdAt: { $gte: since },
+        name: { $in: ['product_view', 'add_to_cart'] },
+        productId: { $type: 'string' },
+      },
+    },
+    {
+      $group: {
+        _id: '$productId',
+        score: { $sum: { $cond: [{ $eq: ['$name', 'add_to_cart'] }, 4, 1] } },
+      },
+    },
+    { $sort: { score: -1 } },
+    { $limit: limit },
   ]);
-  return rows.map(x=>x._id);
+  return rows.map((x) => x._id);
 }
