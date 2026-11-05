@@ -210,3 +210,7 @@ Analytics events automatically expire after 90 days in persistent MongoDB mode, 
 ## Hide discontinued products (admin)
 
 Admins can list **both visible and hidden** items with `GET /api/admin/products?page=1` (100 per page, admin session required). Use `PATCH /api/admin/products/:id` with `{ "active": false }` to hide a discontinued item and `{ "active": true }` to restore it. Both actions preserve the product record and past orders. Public catalogue, details, AI suggestions and recommendations exclude hidden products, and checkout independently rejects inactive products even if a customer kept an old cart.
+
+## Shop budget ranges
+
+The public product catalogue accepts optional `minPrice` and `maxPrice` query parameters (ZAR; inclusive) alongside search, category and sort; example: `GET /api/products?minPrice=100&maxPrice=300`. Invalid or inverted ranges return HTTP 400. Demo and MongoDB-backed catalogues use equivalent filtering.

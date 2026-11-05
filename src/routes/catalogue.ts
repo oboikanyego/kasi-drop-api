@@ -1,4 +1,5 @@
 import type { Express } from 'express';
+import { z } from 'zod';
 import { categories, seedProducts, shippingRule } from '../catalogue.js';
 import { payfastConfigured } from '../payfast-config.js';
 import { geminiConfigured } from '../ai.js';
@@ -48,11 +49,16 @@ export function registerCatalogueRoutes(app: Express) {
   app.get(
     '/api/products',
     safe(async (req, res) => {
+      const amount = z.coerce.number().finite().min(0).max(1000000).optional();
+      const minPrice = amount.parse(req.query.minPrice === undefined ? undefined : req.query.minPrice);
+      const maxPrice = amount.parse(req.query.maxPrice === undefined ? undefined : req.query.maxPrice);
+      if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) return res.status(400).json({ error: 'Minimum price cannot exceed maximum price' });
       const result = await listProducts(
         {
           q: String(req.query.q || ''),
           category: String(req.query.category || 'All'),
-          maxPrice: Number(req.query.maxPrice) || undefined,
+          minPrice,
+          maxPrice,
           sort: String(req.query.sort || 'featured'),
         },
         req.query.page,
