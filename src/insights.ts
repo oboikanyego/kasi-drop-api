@@ -165,7 +165,7 @@ export function registerInsightsRoutes(app: Express) {
             .limit(100)
             .select('id category rating message status createdAt')
             .lean();
-      res.json({ feedback: items.map((item) => ({ ...item, id: (item as {id?: string}).id || String((item as {_id?: unknown})._id ?? '') })) });
+      res.json({ feedback: items.map((item) => ({ ...item, id: (item as {id?: string}).id || String((item as {_id?: unknown})._id ?? ''), status: (item as {status?: string}).status || 'new' })) });
     }),
   );
 }
