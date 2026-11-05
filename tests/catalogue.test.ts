@@ -72,6 +72,9 @@ test('retail demo SKUs can be searched and quoted independently', () => {
 test('catalogue range filters keep only products between both amounts', () => {
   const selected = searchCatalogue(seedProducts, '', 'All', 300, 150);
   assert.ok(selected.length > 0);
-  assert.ok(selected.every(p => p.price >= 150 && p.price <= 300));
-  assert.equal(selected.some(p => p.id === 'rooibos-tea'), false);
+  assert.ok(selected.every((p) => p.price >= 150 && p.price <= 300));
+  assert.equal(
+    selected.some((p) => p.id === 'rooibos-tea'),
+    false,
+  );
 });

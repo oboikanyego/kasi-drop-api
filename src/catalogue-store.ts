@@ -6,11 +6,23 @@ import { popularProductIds } from './insights.js';
 
 export const adminOrderLimit = 200;
 // Catalogue reads are filtered, sorted and limited in MongoDB rather than loading every product.
-type CatalogueQuery = { q: string; category: string; minPrice?: number; maxPrice?: number; sort: string };
+type CatalogueQuery = {
+  q: string;
+  category: string;
+  minPrice?: number;
+  maxPrice?: number;
+  sort: string;
+};
 export async function listProducts(query: CatalogueQuery, page: unknown, limit: unknown) {
   const { pageSize, pageNumber, skip } = pagination(page, limit);
   if (demo) {
-    const filtered = searchCatalogue(memProducts, query.q, query.category, query.maxPrice, query.minPrice);
+    const filtered = searchCatalogue(
+      memProducts,
+      query.q,
+      query.category,
+      query.maxPrice,
+      query.minPrice,
+    );
     filtered.sort(
       query.sort === 'price-asc'
         ? (a, b) => a.price - b.price

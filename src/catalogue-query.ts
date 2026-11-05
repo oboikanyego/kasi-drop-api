@@ -7,13 +7,19 @@ export const maxPageSize = 100;
 export type CatalogueSort = 'featured' | 'price-asc' | 'price-desc';
 
 /** MongoDB equivalent of searchCatalogue(): same active, category, price and term matching. */
-export function catalogueFilter(query = '', category = 'All', maxPrice?: number, minPrice?: number) {
+export function catalogueFilter(
+  query = '',
+  category = 'All',
+  maxPrice?: number,
+  minPrice?: number,
+) {
   const filter: Record<string, unknown> = { active: true };
   if (category && category !== 'All') filter.category = category;
-  if (minPrice !== undefined || maxPrice !== undefined) filter.price = {
-    ...(minPrice !== undefined ? { $gte: minPrice } : {}),
-    ...(maxPrice !== undefined ? { $lte: maxPrice } : {}),
-  };
+  if (minPrice !== undefined || maxPrice !== undefined)
+    filter.price = {
+      ...(minPrice !== undefined ? { $gte: minPrice } : {}),
+      ...(maxPrice !== undefined ? { $lte: maxPrice } : {}),
+    };
   const terms = searchTerms(query);
   if (terms.length) {
     const pattern = new RegExp(terms.map(escapeRegex).join('|'), 'i');
