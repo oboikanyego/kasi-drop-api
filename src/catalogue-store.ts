@@ -60,7 +60,9 @@ export async function assistantCatalogue(): Promise<Product[]> {
   const popular = await popularProductIds(30).catch(() => [] as string[]);
   const positions = new Map(popular.map((id, i) => [id, i]));
   // Promote popular available products into the finite AI context; no shopper profiling.
-  return [...catalogue].sort((a, b) => (positions.get(a.id) ?? 9999) - (positions.get(b.id) ?? 9999));
+  return [...catalogue].sort((a, b) =>
+    (positions.get(a.id) ?? 9999) - (positions.get(b.id) ?? 9999) || Number(b.featured) - Number(a.featured),
+  );
 }
 export async function trendingProducts(limit = 8): Promise<Product[]> {
   const products = await assistantCatalogue();
