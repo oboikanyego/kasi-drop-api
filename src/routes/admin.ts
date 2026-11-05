@@ -57,7 +57,7 @@ export function registerAdminRoutes(app: Express) {
         const isSimulation = (o: Order) => Boolean(o.demoSeed) || o.status === 'demo_paid';
         return res.json({
           products: memProducts.length,
-          lowStock: memProducts.filter((p) => p.stock <= 5).length,
+          lowStock: memProducts.filter((p) => p.active && p.stock <= 5).length,
           orders: memOrders.length,
           demoOrders: memOrders.filter(isSimulation).length,
           revenue: memOrders
@@ -90,7 +90,7 @@ export function registerAdminRoutes(app: Express) {
         recentOrders,
       ] = await Promise.all([
         ProductModel.countDocuments(),
-        ProductModel.countDocuments({ stock: { $lte: 5 } }),
+        ProductModel.countDocuments({ active: true, stock: { $lte: 5 } }),
         OrderModel.countDocuments(),
         OrderModel.countDocuments(simulation),
         sumTotals({ demoSeed: { $ne: true }, status: { $in: revenueStatuses } }),
