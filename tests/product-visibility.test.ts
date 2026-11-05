@@ -4,13 +4,19 @@ import { seedProducts, searchCatalogue, quote } from '../src/catalogue.js';
 import { catalogueFilter } from '../src/catalogue-query.js';
 import { readSource } from './source.js';
 
-const hidden = seedProducts.map(product =>
+const hidden = seedProducts.map((product) =>
   product.id === 'candle' ? { ...product, active: false } : product,
 );
 
 test('hidden products are excluded from public catalogue and search', () => {
-  assert.equal(searchCatalogue(hidden).some(product => product.id === 'candle'), false);
-  assert.equal(searchCatalogue(hidden, 'candle').some(product => product.id === 'candle'), false);
+  assert.equal(
+    searchCatalogue(hidden).some((product) => product.id === 'candle'),
+    false,
+  );
+  assert.equal(
+    searchCatalogue(hidden, 'candle').some((product) => product.id === 'candle'),
+    false,
+  );
   assert.deepEqual(catalogueFilter(), { active: true });
 });
 
