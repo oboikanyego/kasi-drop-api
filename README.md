@@ -214,3 +214,7 @@ Admins can list **both visible and hidden** items with `GET /api/admin/products?
 ## Shop budget ranges
 
 The public product catalogue accepts optional `minPrice` and `maxPrice` query parameters (ZAR; inclusive) alongside search, category and sort; example: `GET /api/products?minPrice=100&maxPrice=300`. Invalid or inverted ranges return HTTP 400. Demo and MongoDB-backed catalogues use equivalent filtering.
+
+## Admin inventory search and filters
+
+Authenticated administrators can query `GET /api/admin/products` with `q` (name, ID/SKU, description and tags), `visibility` (all/active/hidden), `category`, `stock` (all/out/low/available), `featured` (all/yes/no), `sort` (newest/name-asc/name-desc/price-asc/price-desc/stock-asc/stock-desc), and `page`. Filtering and counts occur **before** server pagination (100 items/page) in both MongoDB and demo modes. Input bounds and regex escaping protect database queries. This route requires an admin session; public catalogue rules are unchanged.

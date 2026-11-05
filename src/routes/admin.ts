@@ -11,6 +11,7 @@ import { imageExists } from '../image-store.js';
 import { isImageReference, uploadedImageId } from '../image-rules.js';
 import { safe } from '../http.js';
 import { demo, memOrders, memProducts } from '../state.js';
+import { inventoryParamsSchema, inventoryFilter, inventorySort, filterDemoInventory, inventoryLimit } from '../inventory-filter.js';
 
 const productSchema = z.object({
   name: z.string().min(3).max(100),
@@ -37,21 +38,18 @@ export function registerAdminRoutes(app: Express) {
     '/api/admin/products',
     guard('admin'),
     safe(async (req, res) => {
-      const page = Math.max(
-        1,
-        Math.min(10000, Number.parseInt(String(req.query.page || '1'), 10) || 1),
-      );
-      const limit = 100;
-      const products = demo
-        ? memProducts.slice((page - 1) * limit, page * limit)
-        : await ProductModel.find()
-            .sort({ _id: 1 })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .lean();
-      const total = demo ? memProducts.length : await ProductModel.countDocuments();
+      const params = inventoryParamsSchema.parse(req.query);
+      const filter = inventoryFilter(params);
+      const skip = (params.page - 1) * inventoryLimit;
+      const demoItems = demo ? filterDemoInventory(memProducts, params) : [];
+      const [products, total] = demo
+        ? [demoItems.slice(skip, skip + inventoryLimit), demoItems.length]
+        : await Promise.all([
+            ProductModel.find(filter).sort(inventorySort(params.sort)).skip(skip).limit(inventoryLimit).lean(),
+            ProductModel.countDocuments(filter),
+          ]);
       res.setHeader('Cache-Control', 'no-store');
-      res.json({ products, total, page, pageSize: limit });
+      res.json({ products, total, page: params.page, pageSize: inventoryLimit });
     }),
   );
 
