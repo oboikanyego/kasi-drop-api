@@ -122,19 +122,21 @@ export function registerInsightsRoutes(app: Express) {
             { $group: { _id: '$name', count: { $sum: 1 } } },
             { $project: { _id: 0, name: '$_id', count: 1 } },
           ]);
-      const confirmedPayments = demo ? 0 : await OrderModel.countDocuments({ demoSeed: { $ne: true }, status: { $in: ['paid','processing','shipped','delivered'] }, paidAt: { $gte: since } });
+      const checkoutOrders = demo ? 0 : await OrderModel.countDocuments({ demoSeed: { $ne: true }, paymentMethod: 'payfast', createdAt: { $gte: since } });
+      const confirmedPayments = demo ? 0 : await OrderModel.countDocuments({ demoSeed: { $ne: true }, paymentMethod: 'payfast', createdAt: { $gte: since }, status: { $in: ['paid','processing','shipped','delivered'] }, paidAt: { $exists: true, $ne: null } });
       const counts = Object.fromEntries(
         eventNames.map((name) => [name, grouped.find((x) => x.name === name)?.count ?? 0]),
       );
       res.json({
         periodDays: 30,
         counts,
+        checkoutOrders,
         confirmedPayments,
-        paymentConversion: counts.checkout_started ? Number((confirmedPayments / counts.checkout_started * 100).toFixed(1)) : 0,
+        paymentConversion: checkoutOrders ? Number((confirmedPayments / checkoutOrders * 100).toFixed(1)) : 0,
         checkoutConversion: counts.checkout_started
           ? Number(((counts.checkout_created / counts.checkout_started) * 100).toFixed(1))
           : 0,
-        note: 'Event counts are not unique visitors. Confirmed payments are server-side, non-demo paid orders, based on paidAt. This is an aggregate ratio, not a session-based conversion rate.',
+        note: 'Event counts are not unique visitors. Verified conversion is confirmed payments divided by PayFast orders created during the same 30-day cohort; do not confuse it with analytics events or successful redirect.',
       });
     }),
   );
