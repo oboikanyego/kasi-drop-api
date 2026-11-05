@@ -28,11 +28,12 @@ export function inventoryFilter(input: InventoryParams): Record<string, unknown>
   return filter;
 }
 export function inventorySort(sort: InventoryParams['sort']): Record<string, 1|-1> {
-  const field = {
+  const fields: Record<string, [string, 1|-1]> = {
     'name-asc': ['name', 1], 'name-desc': ['name', -1],
     'price-asc': ['price', 1], 'price-desc': ['price', -1],
     'stock-asc': ['stock', 1], 'stock-desc': ['stock', -1],
-  }[sort] as [string, 1|-1] | undefined;
+  };
+  const field = fields[sort];
   return field ? { [field[0]]: field[1], _id: -1 } : { _id: -1 };
 }
 export function filterDemoInventory(products: Product[], params: InventoryParams): Product[] {
