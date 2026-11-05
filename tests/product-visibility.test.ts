@@ -29,6 +29,6 @@ test('admin can list and update inactive products without deleting them', () => 
 
 test('AI catalogue excludes inactive demo products', () => {
   const source = readSource('src/catalogue-store.ts');
-  assert.match(source, /memProducts\.filter\(\(product\) => product\.active\)/);
-  assert.match(source, /ProductModel\.find\(\{ active: true \}\)/);
+  assert.ok(source.includes('memProducts.filter(product=>product.active)'));
+  assert.ok(source.includes('ProductModel.find({active:true})'));
 });
