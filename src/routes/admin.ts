@@ -11,7 +11,13 @@ import { imageExists } from '../image-store.js';
 import { isImageReference, uploadedImageId } from '../image-rules.js';
 import { safe } from '../http.js';
 import { demo, memOrders, memProducts } from '../state.js';
-import { inventoryParamsSchema, inventoryFilter, inventorySort, filterDemoInventory, inventoryLimit } from '../inventory-filter.js';
+import {
+  inventoryParamsSchema,
+  inventoryFilter,
+  inventorySort,
+  filterDemoInventory,
+  inventoryLimit,
+} from '../inventory-filter.js';
 
 const productSchema = z.object({
   name: z.string().min(3).max(100),
@@ -45,7 +51,11 @@ export function registerAdminRoutes(app: Express) {
       const [products, total] = demo
         ? [demoItems.slice(skip, skip + inventoryLimit), demoItems.length]
         : await Promise.all([
-            ProductModel.find(filter).sort(inventorySort(params.sort)).skip(skip).limit(inventoryLimit).lean(),
+            ProductModel.find(filter)
+              .sort(inventorySort(params.sort))
+              .skip(skip)
+              .limit(inventoryLimit)
+              .lean(),
             ProductModel.countDocuments(filter),
           ]);
       res.setHeader('Cache-Control', 'no-store');
