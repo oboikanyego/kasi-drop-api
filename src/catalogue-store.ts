@@ -64,7 +64,5 @@ export async function assistantCatalogue(): Promise<Product[]> {
 }
 export async function trendingProducts(limit = 8): Promise<Product[]> {
   const products = await assistantCatalogue();
-  return products.filter(p => p.active && p.stock > 0)
-    .sort((a,b) => Number(b.featured) - Number(a.featured))
-    .slice(0, limit);
+  return products.filter(p => p.active && p.stock > 0).slice(0, limit);
 }
