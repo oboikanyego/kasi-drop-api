@@ -163,7 +163,7 @@ export function registerInsightsRoutes(app: Express) {
             .limit(100)
             .select('id category rating message status createdAt')
             .lean();
-      res.json({ feedback: items.map((item) => ({ ...(typeof item.toObject === 'function' ? item.toObject() : item), id: 'id' in item && item.id ? item.id : String(item._id) })) });
+      res.json({ feedback: items.map((item) => ({ ...item, id: (item as {id?: string}).id || String((item as {_id?: unknown})._id ?? '') })) });
     }),
   );
 }
