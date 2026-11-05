@@ -45,3 +45,9 @@ test('pagination defaults to the first page of 100 and rejects bad input', () =>
   ])
     assert.deepEqual(pagination(page, limit), { pageSize: 100, pageNumber: 1, skip: 0 });
 });
+
+test('minimum and maximum inclusive price bounds work together', () => {
+  assert.deepEqual(catalogueFilter('', 'All', 350, 100), { active: true, price: { $gte: 100, $lte: 350 } });
+  assert.deepEqual(catalogueFilter('', 'All', undefined, 150), { active: true, price: { $gte: 150 } });
+  assert.deepEqual(catalogueFilter('', 'All', 150), { active: true, price: { $lte: 150 } });
+});
