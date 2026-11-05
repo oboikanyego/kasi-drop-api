@@ -206,3 +206,7 @@ Analytics events automatically expire after 90 days in persistent MongoDB mode, 
 - `GET /api/recommendations` returns up to eight active in-stock products ranked by **anonymous aggregate product views and add-to-cart signals** over 30 days, with catalogue fallback when there are no events.
 - The AI shopping catalogue prioritizes trending products but still uses Gemini/Groq and validates model-suggested catalogue IDs, prices and stock. This is **aggregate context**, not personal profiling or a learned recommendation model.
 - Do not describe this as AI-personalization. Future improvements could evaluate embeddings and consented, session-level affinity, with meaningful privacy controls.
+
+## Hide discontinued products (admin)
+
+Admins can list **both visible and hidden** items with `GET /api/admin/products?page=1` (100 per page, admin session required). Use `PATCH /api/admin/products/:id` with `{ "active": false }` to hide a discontinued item and `{ "active": true }` to restore it. Both actions preserve the product record and past orders. Public catalogue, details, AI suggestions and recommendations exclude hidden products, and checkout independently rejects inactive products even if a customer kept an old cart.
