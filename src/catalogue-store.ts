@@ -2,6 +2,7 @@ import { searchCatalogue, type Product } from './catalogue.js';
 import { catalogueFilter, catalogueSort, pagination } from './catalogue-query.js';
 import { ProductModel } from './models.js';
 import { demo, memProducts } from './state.js';
+import { popularProductIds } from './insights.js';
 
 export const adminOrderLimit = 200;
 // Catalogue reads are filtered, sorted and limited in MongoDB rather than loading every product.
@@ -54,9 +55,16 @@ export async function productsById(ids: string[]): Promise<Product[]> {
 }
 /** Bounded active catalogue for the AI assistant, which only reads the first 150 products anyway. */
 export async function assistantCatalogue(): Promise<Product[]> {
-  if (demo) return memProducts;
-  return (await ProductModel.find({ active: true })
-    .sort({ _id: 1 })
-    .limit(150)
-    .lean()) as unknown as Product[];
+  const catalogue: Product[] = demo ? memProducts : (await ProductModel.find({ active: true })
+    .sort({ _id: 1 }).limit(150).lean()) as unknown as Product[];
+  const popular = await popularProductIds(30).catch(() => [] as string[]);
+  const positions = new Map(popular.map((id, i) => [id, i]));
+  // Promote popular available products into the finite AI context; no shopper profiling.
+  return [...catalogue].sort((a, b) =>
+    (positions.get(a.id) ?? 9999) - (positions.get(b.id) ?? 9999) || Number(b.featured) - Number(a.featured),
+  );
+}
+export async function trendingProducts(limit = 8): Promise<Product[]> {
+  const products = await assistantCatalogue();
+  return products.filter(p => p.active && p.stock > 0).slice(0, limit);
 }

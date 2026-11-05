@@ -20,6 +20,7 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerAiRoutes } from './routes/ai.js';
 import { registerImageRoutes } from './routes/images.js';
 import { registerHealthRoutes } from './health.js';
+import { deploymentReadiness } from './deployment-readiness.js';
 import { registerInsightsRoutes, recordApiError } from './insights.js';
 
 const app = express();
@@ -86,6 +87,7 @@ registerAdminRoutes(app);
 registerAiRoutes(app);
 registerImageRoutes(app);
 registerInsightsRoutes(app);
+app.get('/api/admin/deployment-readiness', guard('admin'), (_req, res) => res.json(deploymentReadiness()));
 registerProfileRoutes(app, guard(), identity, demo, (id) =>
   memUsers.find((user) => user.id === id),
 );

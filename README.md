@@ -172,3 +172,33 @@ Admin-authenticated reporting:
 - `GET /api/admin/feedback`: latest 100 feedback submissions (handle as potentially sensitive untrusted content).
 
 Analytics events automatically expire after 90 days in persistent MongoDB mode, with an in-memory bounded fallback for demo mode. Free-text feedback is retained until deliberately deleted; establish a retention policy before broad public launch. All metrics are informational, not certified financial reports. The application records HTTP 5xx counts without request bodies, addresses, or IPs.
+
+
+## Launch hardening: payments, feedback, R2 and usage-based recommendations (November 2026)
+
+### Payment and deployment safety
+- **Real payments are not enabled.** The gateway code supports only PayFast **sandbox**. Running test orders is not production payment readiness. Never replace sandbox credentials with live keys and assume checkout is production safe.
+- Admin-only `GET /api/admin/deployment-readiness` reports safe configuration booleans, current mode, optional storage backend and missing deployment settings without returning credentials.
+- The Render blueprint includes `healthCheckPath: /health` and the documented backend URL `https://kasi-drop-api-9rdp.onrender.com`. Update `PUBLIC_API_URL` in the **actual new Render account**, not only in Git. The existing Render service may not be managed by this blueprint.
+- Production payment launch still requires a separate live gateway implementation, authorized merchant, reconciliation/refunds, end-to-end ITN checks, and security review.
+
+### Verified checkout conversion
+- Admin `GET /api/admin/analytics` returns `checkoutOrders`, `confirmedPayments`, and `paymentConversion`. They are computed from **server-owned, non-demo PayFast orders created in the last 30 days**, and confirmed payments require a paid-status record with `paidAt`; not browser redirects or client analytics.
+- This order-cohort conversion is distinct from `checkoutConversion`, which still counts anonymous client checkout starts and creations. These ratios are aggregate and cannot identify a shopper journey.
+- Client-submitted analytics may include `product_view` or `add_to_cart` with a validated product ID. Other personal data, raw searches, prompts, and IPs are excluded. `api_error` is server-owned and cannot be submitted via the public event schema.
+
+### Feedback triage
+- `PATCH /api/admin/feedback/:id` accepts `{ "status": "new" | "in_review" | "resolved" | "closed" }`, admin-authenticated only.
+- `GET /api/admin/feedback` returns statuses and IDs; legacy feedback records can also be updated.
+- Feedback text may contain untrusted or private information: keep admin access restricted, avoid sharing full submissions, and define a retention policy.
+
+### Optional Cloudflare R2
+- All four settings must be configured **together** on the API server: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Create a private R2 bucket and scoped object-storage API credentials; do not put any R2 secrets in Netlify or Git.
+- Once configured, **new** product images use R2 S3-signed REST requests; the existing public `/api/images/:id` URL remains unchanged. Public images are still proxied through the API, so benchmark bandwidth and delivery before scale.
+- Previously uploaded images remain readable from MongoDB. Migrate existing photos with `npm run migrate:images:r2` (dry run), then after a backup and confirmation run `CONFIRM_R2_IMAGE_MIGRATION=YES npm run migrate:images:r2`. This migration is idempotent and **does not delete MongoDB originals**. Validate all images before deciding on a separate cleanup.
+- R2 is **not active until credentials are configured**; successful CI does not prove your private account's R2 connection.
+
+### Trending recommendations
+- `GET /api/recommendations` returns up to eight active in-stock products ranked by **anonymous aggregate product views and add-to-cart signals** over 30 days, with catalogue fallback when there are no events.
+- The AI shopping catalogue prioritizes trending products but still uses Gemini/Groq and validates model-suggested catalogue IDs, prices and stock. This is **aggregate context**, not personal profiling or a learned recommendation model.
+- Do not describe this as AI-personalization. Future improvements could evaluate embeddings and consented, session-level affinity, with meaningful privacy controls.
