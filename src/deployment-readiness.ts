@@ -13,6 +13,9 @@ export function deploymentReadiness(env: NodeJS.ProcessEnv = process.env) {
   if (paymentMode !== 'sandbox') issues.push('Only PayFast sandbox is supported; live payments are disabled');
   if (!payfastConfigured(env)) issues.push('PayFast sandbox credentials are missing or invalid');
   if (!demo && (!env.MONGODB_URI || !env.MONGODB_DB_NAME || !env.JWT_SECRET)) issues.push('Persistent database/auth configuration is incomplete');
+  let imageStorage = 'mongodb';
+  try { imageStorage = r2Config(env) ? 'r2' : 'mongodb'; }
+  catch { issues.push('Cloudflare R2 settings are incomplete'); imageStorage = 'misconfigured'; }
   return {
     deployable: issues.filter(x => !x.startsWith('Only PayFast')).length === 0,
     acceptsRealPayments: false,
@@ -20,7 +23,7 @@ export function deploymentReadiness(env: NodeJS.ProcessEnv = process.env) {
     gatewayMode: paymentMode,
     sandboxReady: payfastConfigured(env),
     databaseMode: demo ? 'demo' : 'persistent',
-    imageStorage: r2Config(env) ? 'r2' : 'mongodb',
+    imageStorage,
     callbackOriginMatchesConfiguredUrl: origin.startsWith('https://'),
     issues,
   };
