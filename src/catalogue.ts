@@ -341,13 +341,15 @@ export function searchCatalogue(
   query = '',
   category = 'All',
   maxPrice?: number,
+  minPrice?: number,
 ) {
   const terms = searchTerms(query);
   return products.filter(
     (p) =>
       p.active &&
       (category === 'All' || !category || p.category === category) &&
-      (!maxPrice || p.price <= maxPrice) &&
+      (minPrice === undefined || p.price >= minPrice) &&
+      (maxPrice === undefined || p.price <= maxPrice) &&
       (!terms.length ||
         terms.some((t) =>
           [p.name, p.description, p.category, ...p.tags].join(' ').toLowerCase().includes(t),
