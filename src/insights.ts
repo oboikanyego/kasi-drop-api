@@ -140,14 +140,15 @@ export function registerInsightsRoutes(app: Express) {
   );
   app.patch('/api/admin/feedback/:id', guard('admin'), safe(async (req, res) => {
     const status = z.enum(['new','in_review','resolved','closed']).parse(req.body?.status);
-    const id = z.string().uuid().parse(req.params.id);
+    const id = z.string().regex(/^(?:[0-9a-f]{24}|[0-9a-f-]{36})$/i).parse(req.params.id);
     if (demo) {
       const item = demoFeedback.find(x => x.id === id);
       if (!item) return res.status(404).json({ error: 'Feedback not found' });
       item.status = status;
       return res.json({ id, status });
     }
-    const item = await FeedbackModel.findOneAndUpdate({ id }, { $set: { status } }, { new: true });
+    const query = /^[0-9a-f]{24}$/i.test(id) ? { _id: id } : { id };
+    const item = await FeedbackModel.findOneAndUpdate(query, { $set: { status } }, { new: true });
     if (!item) return res.status(404).json({ error: 'Feedback not found' });
     res.json({ id, status });
   }));
@@ -162,7 +163,7 @@ export function registerInsightsRoutes(app: Express) {
             .limit(100)
             .select('id category rating message status createdAt')
             .lean();
-      res.json({ feedback: items });
+      res.json({ feedback: items.map((item) => ({ ...(typeof item.toObject === 'function' ? item.toObject() : item), id: 'id' in item && item.id ? item.id : String(item._id) })) });
     }),
   );
 }
