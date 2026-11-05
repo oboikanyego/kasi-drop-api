@@ -28,7 +28,7 @@ test('admin can list and update inactive products without deleting them', () => 
   const routes = readSource('src/routes/admin.ts');
   assert.match(routes, /'\/api\/admin\/products'/);
   assert.match(routes, /guard\('admin'\)/);
-  assert.match(routes, /ProductModel\.find\(\)/);
+  assert.match(routes, /ProductModel\.find\(filter\)/);
   assert.match(routes, /productSchema\.partial\(\)/);
   assert.match(routes, /findOneAndUpdate/);
 });
