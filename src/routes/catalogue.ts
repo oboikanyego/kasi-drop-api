@@ -3,12 +3,16 @@ import { categories, seedProducts, shippingRule } from '../catalogue.js';
 import { payfastConfigured } from '../payfast-config.js';
 import { geminiConfigured } from '../ai.js';
 import { groqConfigured } from '../groq.js';
-import { activeProduct, listProducts, similarProducts } from '../catalogue-store.js';
+import { activeProduct, listProducts, similarProducts, trendingProducts } from '../catalogue-store.js';
 import { safe } from '../http.js';
 import { demo } from '../state.js';
 import { demoSeedStatus, seedStatus } from '../startup.js';
 
 export function registerCatalogueRoutes(app: Express) {
+  app.get('/api/recommendations', safe(async (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({ products: await trendingProducts(8), strategy: 'anonymous-usage-and-featured' });
+  }));
   app.get('/health', (req, res) =>
     res.json({
       ok: true,
