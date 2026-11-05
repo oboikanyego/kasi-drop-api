@@ -32,6 +32,22 @@ async function assertImageExists(image: string | undefined) {
   if (id && !(await imageExists(id))) throw new HttpError(400, 'That uploaded photo was not found');
 }
 export function registerAdminRoutes(app: Express) {
+  // Include inactive products: the public catalogue intentionally excludes them.
+  app.get(
+    '/api/admin/products',
+    guard('admin'),
+    safe(async (req, res) => {
+      const page = Math.max(1, Math.min(10000, Number.parseInt(String(req.query.page || '1'), 10) || 1));
+      const limit = 100;
+      const products = demo
+        ? memProducts.slice((page - 1) * limit, page * limit)
+        : await ProductModel.find().sort({ _id: 1 }).skip((page - 1) * limit).limit(limit).lean();
+      const total = demo ? memProducts.length : await ProductModel.countDocuments();
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ products, total, page, pageSize: limit });
+    }),
+  );
+
   app.get(
     '/api/admin/summary',
     guard('admin'),
@@ -41,7 +57,7 @@ export function registerAdminRoutes(app: Express) {
         const isSimulation = (o: Order) => Boolean(o.demoSeed) || o.status === 'demo_paid';
         return res.json({
           products: memProducts.length,
-          lowStock: memProducts.filter((p) => p.stock <= 5).length,
+          lowStock: memProducts.filter((p) => p.active && p.stock <= 5).length,
           orders: memOrders.length,
           demoOrders: memOrders.filter(isSimulation).length,
           revenue: memOrders
@@ -74,7 +90,7 @@ export function registerAdminRoutes(app: Express) {
         recentOrders,
       ] = await Promise.all([
         ProductModel.countDocuments(),
-        ProductModel.countDocuments({ stock: { $lte: 5 } }),
+        ProductModel.countDocuments({ active: true, stock: { $lte: 5 } }),
         OrderModel.countDocuments(),
         OrderModel.countDocuments(simulation),
         sumTotals({ demoSeed: { $ne: true }, status: { $in: revenueStatuses } }),

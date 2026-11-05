@@ -56,7 +56,7 @@ export async function productsById(ids: string[]): Promise<Product[]> {
 /** Bounded active catalogue for the AI assistant, which only reads the first 150 products anyway. */
 export async function assistantCatalogue(): Promise<Product[]> {
   const catalogue: Product[] = demo
-    ? memProducts
+    ? memProducts.filter((product) => product.active)
     : ((await ProductModel.find({ active: true })
         .sort({ _id: 1 })
         .limit(150)
